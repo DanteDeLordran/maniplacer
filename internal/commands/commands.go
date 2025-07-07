@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/dantedelordran/maniplacer/internal/models"
+	"gopkg.in/yaml.v3"
 )
 
 func Help() {
@@ -25,7 +27,7 @@ func NewManifest() {
 		os.Exit(1)
 	}
 
-	config, err := loadConfig(*file)
+	config, err := loadJson(*file)
 
 	if err != nil {
 		fmt.Println("Error loading config due to ", err)
@@ -34,17 +36,40 @@ func NewManifest() {
 
 	fmt.Println(config)
 
+	manifest, err := loadYaml(filepath.Join("internal", "manifest", "manifest.yml"))
+
+	if err != nil {
+		fmt.Println("Error loading yaml due to ", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(manifest)
+
 }
 
-func loadConfig(path string) (*models.ManifestConfig, error) {
+func loadJson(path string) (*models.ManifestConfig, error) {
 	data, err := os.ReadFile(path)
 
 	if err != nil {
-		fmt.Println("Failed to load file with specified path")
-		return nil, err
+		return nil, fmt.Errorf("failed to read JSON file: %w", err)
 	}
 
 	var config models.ManifestConfig
 	err = json.Unmarshal(data, &config)
 	return &config, nil
+}
+
+func loadYaml(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to read YAML file: %w", err)
+	}
+
+	var manifest map[string]any
+	if err := yaml.Unmarshal(data, &manifest); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	return manifest, nil
 }
