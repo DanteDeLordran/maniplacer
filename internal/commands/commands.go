@@ -1,15 +1,16 @@
 package commands
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"text/template"
 	"time"
 
 	"github.com/dantedelordran/maniplacer/internal/models"
-	"gopkg.in/yaml.v3"
 )
 
 func Help() {
@@ -35,7 +36,7 @@ func NewManifest() {
 		os.Exit(1)
 	}
 
-	manifest, err := loadYaml(filepath.Join("internal", "manifest", "manifest.yml"))
+	manifest, err := os.ReadFile(filepath.Join("internal", "manifest", "manifest.yml"))
 
 	if err != nil {
 		fmt.Println("Error loading yaml due to ", err)
@@ -56,17 +57,21 @@ func NewManifest() {
 		os.Exit(1)
 	}
 
-	filename := fmt.Sprintf("manifest-changes-%s.yaml", time.Now().Format("20060102-150405"))
+	filename := fmt.Sprintf("manifest-%s-%s.yaml", config.NameSpace, time.Now().Format("20060102-150405"))
 
-	err = os.MkdirAll(filepath.Join(home, "maniplacer", filename), 0700)
+	err = os.MkdirAll(filepath.Join(home, "maniplacer"), 0644)
 
 	if err != nil {
 		fmt.Println("Error creating dir due to ", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("Succesfuly created file at: ", filename)
-	fmt.Println(yml)
+	if err := os.WriteFile(filepath.Join(home, "maniplacer", filename), yml, 0644); err != nil {
+		fmt.Printf("Error saving manifest: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Succesfuly created file at: ", filepath.Join(home, "maniplacer", filename))
 
 }
 
@@ -82,21 +87,17 @@ func loadJson(path string) (*models.ManifestConfig, error) {
 	return &config, nil
 }
 
-func loadYaml(path string) (map[string]any, error) {
-	data, err := os.ReadFile(path)
+func replaceYaml(templateContent []byte, config *models.ManifestConfig) ([]byte, error) {
 
+	tmpl, err := template.New("manifest").Parse(string(templateContent))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read YAML file: %w", err)
+		return nil, fmt.Errorf("template parsing failed: %w", err)
 	}
 
-	var manifest map[string]any
-	if err := yaml.Unmarshal(data, &manifest); err != nil {
-		return nil, fmt.Errorf("failed to parse YAML: %w", err)
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, config); err != nil {
+		return nil, fmt.Errorf("template execution failed: %w", err)
 	}
 
-	return manifest, nil
-}
-
-func replaceYaml(manifest map[string]any, config *models.ManifestConfig) (map[string]any, error) {
-	return nil, nil
+	return buf.Bytes(), nil
 }
