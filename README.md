@@ -9,6 +9,7 @@ Simple YAML K8s replacer from JSON file
     "configMapName": "",
     "gatewayGKE": "",
     "hostNameK8": "",
+    "name": "",
     "nameSpace": "",
     "nameSpaceGateway": "",
     "pathBase": "",
