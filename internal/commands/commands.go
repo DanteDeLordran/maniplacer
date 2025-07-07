@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/dantedelordran/maniplacer/internal/models"
 	"gopkg.in/yaml.v3"
@@ -34,8 +35,6 @@ func NewManifest() {
 		os.Exit(1)
 	}
 
-	fmt.Println(config)
-
 	manifest, err := loadYaml(filepath.Join("internal", "manifest", "manifest.yml"))
 
 	if err != nil {
@@ -43,7 +42,31 @@ func NewManifest() {
 		os.Exit(1)
 	}
 
-	fmt.Println(manifest)
+	yml, err := replaceYaml(manifest, config)
+
+	if err != nil {
+		fmt.Println("Error replacing yaml due to ", err)
+		os.Exit(1)
+	}
+
+	home, err := os.UserHomeDir()
+
+	if err != nil {
+		fmt.Println("Error getting HOME dir due to ", err)
+		os.Exit(1)
+	}
+
+	filename := fmt.Sprintf("manifest-changes-%s.yaml", time.Now().Format("20060102-150405"))
+
+	err = os.MkdirAll(filepath.Join(home, "maniplacer", filename), 0700)
+
+	if err != nil {
+		fmt.Println("Error creating dir due to ", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Succesfuly created file at: ", filename)
+	fmt.Println(yml)
 
 }
 
@@ -72,4 +95,8 @@ func loadYaml(path string) (map[string]any, error) {
 	}
 
 	return manifest, nil
+}
+
+func replaceYaml(manifest map[string]any, config *models.ManifestConfig) (map[string]any, error) {
+	return nil, nil
 }
