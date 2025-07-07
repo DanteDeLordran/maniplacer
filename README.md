@@ -4,6 +4,7 @@ Simple YAML K8s replacer from JSON file
 
 ## JSON structure
 
+```javascript
 {
     "configMapName": "",
     "gatewayGKE": "",
@@ -27,3 +28,4 @@ Simple YAML K8s replacer from JSON file
     "hpaAvgCPU": "",
     "hpaAvgMemory": ""
 }
+```
