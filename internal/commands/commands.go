@@ -182,6 +182,7 @@ func downloadAndReplace(version string) error {
 
 	backupPath := execPath + ".backup"
 	updatePath := execPath + ".update"
+	scriptPath := execPath + ".update.sh"
 
 	if err := copyFile(tempFile.Name(), backupPath); err != nil {
 		return fmt.Errorf("failed to create backup: %w", err)
@@ -190,10 +191,10 @@ func downloadAndReplace(version string) error {
 		return fmt.Errorf("failed to create update file: %w", err)
 	}
 
-	return replaceBinary(execPath, updatePath, backupPath)
+	return replaceBinary(execPath, updatePath, backupPath, scriptPath)
 }
 
-func replaceBinary(execPath, updatePath, backupPath string) error {
+func replaceBinary(execPath, updatePath, backupPath, scriptPath string) error {
 	scriptContent := fmt.Sprintf(`#!/bin/bash
 set -e
 echo "Waiting for old process to exit..."
@@ -206,15 +207,16 @@ echo "Replacing old binary..."
 mv "%[1]s" "%[2]s" 2>/dev/null || true
 mv "%[3]s" "%[1]s"
 chmod +x "%[1]s"
-rm -f "%[3]s"
+
+echo "Cleaning up..."
+rm -f "%[2]s" "%[3]s" "%[4]s"
 
 echo "Update complete."
 
-# Optional: Uncomment to auto-restart
+# Optional: Uncomment to restart
 # exec "%[1]s" "$@"
-`, execPath, backupPath, updatePath)
+`, execPath, backupPath, updatePath, scriptPath)
 
-	scriptPath := execPath + ".update.sh"
 	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
 		os.Remove(updatePath)
 		return fmt.Errorf("failed to create update script: %w", err)
