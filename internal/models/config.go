@@ -16,7 +16,7 @@ type ManifestConfig struct {
 	Port             string `json:"port"`
 	ReqCPU           string `json:"reqCPU"`
 	ReqMemory        string `json:"reqMemory"`
-	TimeoutSEC       uint8  `json:"timeoutSec"`
+	TimeoutSec       uint8  `json:"timeoutSec"`
 	Image            string `json:"image"`
 	TimeoutLiveness  string `json:"timeoutLiveness"`
 	TimeoutReadiness string `json:"timeoutReadiness"`

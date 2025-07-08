@@ -1,60 +1,60 @@
 apiVersion: networking.gke.io/v1
 kind: GCPBackendPolicy
 metadata:
-  name: {{  }}
-  namespace: {{  }}
+  name: {{ .Name }}
+  namespace: {{ .NameSpace }}
 spec:
   default: 
-    timeoutSec: {{  }}
+    timeoutSec: {{ .TimeoutSec }}
   targetRef: 
     group: ""
     kind: Service
-    name: {{  }}
+    name: {{ .Name }}
 ---
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
 metadata:
-  name: {{  }}
-  namespace: {{  }}
+  name: {{ .Name }}
+  namespace: {{ .NameSpace }}
 spec:
   parentRefs:
   - kind: Gateway
-    name: {{  }}
-    namespace: {{  }}
+    name: {{ .GatewayGKE }}
+    namespace: {{ .NameSpaceGateway }}
   hostnames:
-  - "{{  }}"
+  - "{{ .HostNameK8 }}"
   rules:
   - matches:
     - path:
         type: PathPrefix
-        value: {{  }}
+        value: {{ .PathBase }}
     backendRefs:
     - kind: Service
-      name: {{  }}
-      namespace: {{  }}
-      port: {{  }}
+      name: {{ .Name }}
+      namespace: {{ .NameSpace }}
+      port: {{ .PortService }}
       weight: 100
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{  }}
+  name: {{ .Name }}
   labels:
-    app: {{  }}
+    app: {{ .Name }}
 spec:
   selector:
-    app: {{  }}
+    app: {{ .Name }}
   ports:
   - name: http
     protocol: TCP
-    port: {{  }}
-    targetPort: {{  }}
+    port: {{ .PortService }}
+    targetPort: {{ .Port }}
   type: ClusterIP
 ---
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
-  name: {{  }}
+  name: {{ .Name }}
 spec:
   default:
     checkIntervalSec: 30
@@ -63,7 +63,7 @@ spec:
     config:
       httpHealthCheck:
         portSepcification: USE_SERVING_PORT
-        requestPath: {{  }}
+        requestPath: {{ .PathReadiness }}
       type: HTTP
     healthyThreshold: 1
     timeoutSec: 5
@@ -71,21 +71,21 @@ spec:
   targetRef: 
     group: ""
     kind: Service
-    name: {{  }}
+    name: {{ .Name }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: {{  }}
-  name: {{  }}
+    app: {{ .Name }}
+  name: {{ .Name }}
 spec:
   progressDeadlineSeconds: 600
-  replicas: {{  }}
+  replicas: {{ .Replicas }}
   revisionHistoryLimit: 3
   selector:
     matchLabels:
-      app: {{  }}
+      app: {{ .Name }}
   strategy:
     rollingUpdate:
       maxSurge: 25%
@@ -94,15 +94,15 @@ spec:
   template:
     metadata:
       labels:
-        app: {{  }}
+        app: {{ .Name }}
     spec:
       containers:
-      - image: {{  }}
+      - image: {{ .Image }}
         imagePullPolicy: Always
-        name: {{  }}
+        name: {{ .Name }}
         envFrom:
         - secretRef:
-          name: {{  }}
+          name: {{ .Name }}
         resources:
             limits:
               cpu: 700m
@@ -113,23 +113,23 @@ spec:
         livenessProbe:
           failureThreshold: 3
           httpGet:
-            path: {{  }}
-            port: {{  }}
+            path: {{ .PathLiveness }}
+            port: {{ .Port }}
           initialDelaySeconds: 60
           periodSeconds: 30
           successThreshold: 1
-          timeoutSeconds: {{  }}
+          timeoutSeconds: {{ .TimeoutLiveness }}
         readinessProbe:
           httpGet:
-            path: {{  }}
-            port: {{  }}
+            path: {{ .PathReadiness }}
+            port: {{ .Port }}
             scheme: HTTP
           initialDelaySeconds: 10
-          timeoutSeconds: {{  }}
+          timeoutSeconds: {{ .TimeoutReadiness }}
           successThreshold: 1
           periodSeconds: 30
         ports:
-          - containerPort: {{  }}
+          - containerPort: {{ .PortService }}
             name: http
             protocol: TCP
         securityContext:
@@ -159,25 +159,25 @@ spec:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: {{  }}
-  namespace: {{  }}
+  name: {{ .Name }}
+  namespace: {{ .NameSpace }}
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: {{  }}
+    name: {{ .Name }}
   minReplicas: 1
-  maxReplicas: {{  }}
+  maxReplicas: {{ .MaxReplicas }}
   metrics:
   - type: Resource
     resource:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: {{  }}
+        averageUtilization: {{ .HpaAvgCPU }}
   - type: Resource
     resource:
       name: memory
       target: 
         type: Utilization
-        averageUtilization: {{  }}
+        averageUtilization: {{ .HpaAvgMemory }}
