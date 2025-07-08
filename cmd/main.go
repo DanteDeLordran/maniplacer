@@ -17,7 +17,7 @@ func main() {
 	switch os.Args[1] {
 	case "help", "-h", "--help":
 		commands.Help()
-	case "version", "-v":
+	case "version", "-v", "--version":
 		commands.Version()
 	case "new":
 		commands.NewManifest()
