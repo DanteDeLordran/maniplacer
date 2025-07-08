@@ -14,6 +14,7 @@ import (
 	"github.com/dantedelordran/maniplacer/internal/models"
 )
 
+//go:embed manifest/manifest.yml
 var embedManifest embed.FS
 
 func NewManifest() {
@@ -34,7 +35,7 @@ func NewManifest() {
 	}
 
 	//manifest, err := os.ReadFile(filepath.Join("internal", "manifest", "manifest.yml"))
-	manifest, err := embedManifest.ReadFile("internal/manifest/manifest.yml")
+	manifest, err := embedManifest.ReadFile("manifest/manifest.yml")
 	if err != nil {
 		fmt.Println("Error loading embeded yaml due to", err)
 		os.Exit(1)
