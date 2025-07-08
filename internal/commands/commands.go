@@ -96,7 +96,6 @@ func AutoUpdate() {
 	}
 
 	if *check {
-
 		if version == VERSION {
 			fmt.Println("No new version available")
 		} else {
@@ -116,16 +115,8 @@ func AutoUpdate() {
 		os.Exit(1)
 	}
 
-	fmt.Println("Successfully updated to", version)
+	fmt.Println("Succesfully updated to", version)
 
-}
-
-type GitHubRelease struct {
-	TagName string `json:"tag_name"`
-	Assets  []struct {
-		Name               string `json:"name"`
-		BrowserDownloadURL string `json:"browser_download_url"`
-	} `json:"assets"`
 }
 
 func getLatestVersion() (string, error) {
@@ -139,7 +130,7 @@ func getLatestVersion() (string, error) {
 		return "", fmt.Errorf("GitHub API returned status %d", res.StatusCode)
 	}
 
-	var release GitHubRelease
+	var release models.GitHubRelease
 	if err := json.NewDecoder(res.Body).Decode(&release); err != nil {
 		return "", fmt.Errorf("failed to decode release info: %w", err)
 	}
@@ -163,9 +154,6 @@ func downloadAndReplace(version string) error {
 	// Determine the binary name based on OS
 	goos := runtime.GOOS
 	arch := runtime.GOARCH
-	if arch == "amd64" {
-		arch = "x86_64"
-	}
 
 	// Construct the expected binary name
 	binaryName := fmt.Sprintf("maniplacer-%s-%s", goos, arch)
@@ -232,7 +220,7 @@ func downloadAndReplace(version string) error {
 }
 
 func getDownloadURL(version, binaryName string) (string, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/dantedelordran/maniplacer/releases/tags/v%s", version)
+	url := fmt.Sprintf("https://api.github.com/repos/dantedelordran/maniplacer/releases/tags/%s", version)
 	resp, err := http.Get(url)
 	if err != nil {
 		return "", fmt.Errorf("failed to get release info: %w", err)
@@ -243,7 +231,7 @@ func getDownloadURL(version, binaryName string) (string, error) {
 		return "", fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
 	}
 
-	var release GitHubRelease
+	var release models.GitHubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
 		return "", fmt.Errorf("failed to decode release info: %w", err)
 	}
