@@ -15,10 +15,14 @@ func main() {
 	}
 
 	switch os.Args[1] {
-	case "new":
-		commands.NewManifest()
 	case "help", "-h", "--help":
 		commands.Help()
+	case "version", "-v":
+		commands.Version()
+	case "new":
+		commands.NewManifest()
+	case "update":
+		commands.AutoUpdate()
 	default:
 		fmt.Printf("Unknown command: %s\n", os.Args[1])
 		commands.Help()

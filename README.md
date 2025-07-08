@@ -2,6 +2,13 @@
 
 Simple YAML K8s replacer from JSON file
 
+## How to install
+
+```bash
+curl -fsSL https://raw.github.com/dantedelordran/maniplacer/main/installer.sh | bash
+```
+
+
 ## JSON structure
 
 ```javascript
