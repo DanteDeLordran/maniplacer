@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"embed"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/dantedelordran/maniplacer/internal/models"
 )
+
+var embedManifest embed.FS
 
 func NewManifest() {
 	cmd := flag.NewFlagSet("new", flag.ExitOnError)
@@ -30,9 +33,10 @@ func NewManifest() {
 		os.Exit(1)
 	}
 
-	manifest, err := os.ReadFile(filepath.Join("internal", "manifest", "manifest.yml"))
+	//manifest, err := os.ReadFile(filepath.Join("internal", "manifest", "manifest.yml"))
+	manifest, err := embedManifest.ReadFile("internal/manifest/manifest.yml")
 	if err != nil {
-		fmt.Println("Error loading yaml due to", err)
+		fmt.Println("Error loading embeded yaml due to", err)
 		os.Exit(1)
 	}
 
