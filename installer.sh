@@ -240,7 +240,7 @@ verify_installation() {
     fi
     
     # Test version command
-    VERSION_OUTPUT=$($TOOL_NAME --version 2>/dev/null || echo "")
+    VERSION_OUTPUT=$($TOOL_NAME version 2>/dev/null || echo "")
     if [ -z "$VERSION_OUTPUT" ]; then
         warning "Could not verify version, but binary is installed"
     else
