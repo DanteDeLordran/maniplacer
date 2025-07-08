@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"text/template"
@@ -29,7 +30,6 @@ func Version() {
 func NewManifest() {
 	cmd := flag.NewFlagSet("new", flag.ExitOnError)
 	file := cmd.String("f", "", "Path to JSON config file")
-
 	cmd.Parse(os.Args[2:])
 
 	if *file == "" {
@@ -39,49 +39,44 @@ func NewManifest() {
 	}
 
 	config, err := loadJson(*file)
-
 	if err != nil {
-		fmt.Println("Error loading config due to ", err)
+		fmt.Println("Error loading config due to", err)
 		os.Exit(1)
 	}
 
 	manifest, err := os.ReadFile(filepath.Join("internal", "manifest", "manifest.yml"))
-
 	if err != nil {
-		fmt.Println("Error loading yaml due to ", err)
+		fmt.Println("Error loading yaml due to", err)
 		os.Exit(1)
 	}
 
 	yml, err := replaceYaml(manifest, config)
-
 	if err != nil {
-		fmt.Println("Error replacing yaml due to ", err)
+		fmt.Println("Error replacing yaml due to", err)
 		os.Exit(1)
 	}
 
 	home, err := os.UserHomeDir()
-
 	if err != nil {
-		fmt.Println("Error getting HOME dir due to ", err)
+		fmt.Println("Error getting HOME dir due to", err)
 		os.Exit(1)
 	}
 
 	filename := fmt.Sprintf("manifest-%s-%s.yaml", config.NameSpace, time.Now().Format("20060102-150405"))
+	outputDir := filepath.Join(home, "maniplacer")
 
-	err = os.MkdirAll(filepath.Join(home, "maniplacer"), 0644)
-
-	if err != nil {
-		fmt.Println("Error creating dir due to ", err)
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		fmt.Println("Error creating dir due to", err)
 		os.Exit(1)
 	}
 
-	if err := os.WriteFile(filepath.Join(home, "maniplacer", filename), yml, 0644); err != nil {
+	outputPath := filepath.Join(outputDir, filename)
+	if err := os.WriteFile(outputPath, yml, 0644); err != nil {
 		fmt.Printf("Error saving manifest: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("Succesfuly created file at: ", filepath.Join(home, "maniplacer", filename))
-
+	fmt.Println("Successfully created file at:", outputPath)
 }
 
 func AutoUpdate() {
@@ -91,7 +86,7 @@ func AutoUpdate() {
 
 	version, err := getLatestVersion()
 	if err != nil {
-		fmt.Println("Could not get latest version due to: ", err)
+		fmt.Println("Could not get latest version due to:", err)
 		os.Exit(1)
 	}
 
@@ -99,7 +94,7 @@ func AutoUpdate() {
 		if version == VERSION {
 			fmt.Println("No new version available")
 		} else {
-			fmt.Println("New version available: ", version)
+			fmt.Println("New version available:", version)
 		}
 		return
 	}
@@ -115,8 +110,7 @@ func AutoUpdate() {
 		os.Exit(1)
 	}
 
-	fmt.Println("Succesfully updated to", version)
-
+	fmt.Println("Successfully updated to", version)
 }
 
 func getLatestVersion() (string, error) {
@@ -135,7 +129,6 @@ func getLatestVersion() (string, error) {
 		return "", fmt.Errorf("failed to decode release info: %w", err)
 	}
 
-	// Remove 'v' prefix if present (e.g., "v1.0.0" -> "1.0.0")
 	version := release.TagName
 	if len(version) > 0 && version[0] == 'v' {
 		version = version[1:]
@@ -145,98 +138,115 @@ func getLatestVersion() (string, error) {
 }
 
 func downloadAndReplace(version string) error {
-	// Get the current executable path
 	execPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
 
-	// Determine the binary name based on OS
 	goos := runtime.GOOS
 	arch := runtime.GOARCH
-
-	// Construct the expected binary name
 	binaryName := fmt.Sprintf("maniplacer-%s-%s", goos, arch)
-	if goos == "windows" {
-		binaryName += ".exe"
-	}
 
-	// Get the download URL
 	downloadURL, err := getDownloadURL(version, binaryName)
 	if err != nil {
 		return fmt.Errorf("failed to get download URL: %w", err)
 	}
 
-	// Download the new binary
 	fmt.Printf("Downloading %s...\n", downloadURL)
-	resp, err := http.Get(downloadURL)
+	res, err := http.Get(downloadURL)
 	if err != nil {
 		return fmt.Errorf("failed to download binary: %w", err)
 	}
-	defer resp.Body.Close()
+	defer res.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed with status %d", resp.StatusCode)
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed with status %d", res.StatusCode)
 	}
 
-	// Create a temporary file
 	tempFile, err := os.CreateTemp("", "maniplacer-update-*")
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
 	defer os.Remove(tempFile.Name())
 
-	// Copy the downloaded content to temp file
-	_, err = io.Copy(tempFile, resp.Body)
+	_, err = io.Copy(tempFile, res.Body)
 	if err != nil {
 		tempFile.Close()
 		return fmt.Errorf("failed to write temp file: %w", err)
 	}
 	tempFile.Close()
 
-	// Make the temp file executable
 	if err := os.Chmod(tempFile.Name(), 0755); err != nil {
 		return fmt.Errorf("failed to make temp file executable: %w", err)
 	}
 
-	// Create backup of current binary
 	backupPath := execPath + ".backup"
-	if err := copyFile(execPath, backupPath); err != nil {
+	updatePath := execPath + ".update"
+
+	if err := copyFile(tempFile.Name(), backupPath); err != nil {
 		return fmt.Errorf("failed to create backup: %w", err)
 	}
-
-	// Replace the current binary
-	if err := copyFile(tempFile.Name(), execPath); err != nil {
-		// Restore from backup if replacement fails
-		copyFile(backupPath, execPath)
-		os.Remove(backupPath)
-		return fmt.Errorf("failed to replace binary: %w", err)
+	if err := copyFile(tempFile.Name(), updatePath); err != nil {
+		return fmt.Errorf("failed to create update file: %w", err)
 	}
 
-	// Clean up backup
-	os.Remove(backupPath)
+	return replaceBinary(execPath, updatePath, backupPath)
+}
 
+func replaceBinary(execPath, updatePath, backupPath string) error {
+	scriptContent := fmt.Sprintf(`#!/bin/bash
+set -e
+echo "Waiting for old process to exit..."
+
+while lsof "%[1]s" &>/dev/null; do
+    sleep 1
+done
+
+echo "Replacing old binary..."
+mv "%[1]s" "%[2]s" 2>/dev/null || true
+mv "%[3]s" "%[1]s"
+chmod +x "%[1]s"
+rm -f "%[3]s"
+
+echo "Update complete."
+
+# Optional: Uncomment to auto-restart
+# exec "%[1]s" "$@"
+`, execPath, backupPath, updatePath)
+
+	scriptPath := execPath + ".update.sh"
+	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
+		os.Remove(updatePath)
+		return fmt.Errorf("failed to create update script: %w", err)
+	}
+
+	cmd := exec.Command("/bin/bash", scriptPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Start()
+
+	fmt.Println("Update will complete after the program exits...")
+	os.Exit(0)
 	return nil
 }
 
 func getDownloadURL(version, binaryName string) (string, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/dantedelordran/maniplacer/releases/tags/%s", version)
-	resp, err := http.Get(url)
+	res, err := http.Get(url)
 	if err != nil {
 		return "", fmt.Errorf("failed to get release info: %w", err)
 	}
-	defer resp.Body.Close()
+	defer res.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+	if res.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub API returned status %d", res.StatusCode)
 	}
 
 	var release models.GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+	if err := json.NewDecoder(res.Body).Decode(&release); err != nil {
 		return "", fmt.Errorf("failed to decode release info: %w", err)
 	}
 
-	// Find the matching asset
 	for _, asset := range release.Assets {
 		if asset.Name == binaryName {
 			return asset.BrowserDownloadURL, nil
@@ -264,7 +274,6 @@ func copyFile(src, dst string) error {
 		return err
 	}
 
-	// Copy file permissions
 	sourceInfo, err := sourceFile.Stat()
 	if err != nil {
 		return err
@@ -275,18 +284,16 @@ func copyFile(src, dst string) error {
 
 func loadJson(path string) (*models.ManifestConfig, error) {
 	data, err := os.ReadFile(path)
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to read JSON file: %w", err)
 	}
 
 	var config models.ManifestConfig
 	err = json.Unmarshal(data, &config)
-	return &config, nil
+	return &config, err
 }
 
 func replaceYaml(templateContent []byte, config *models.ManifestConfig) ([]byte, error) {
-
 	tmpl, err := template.New("manifest").Parse(string(templateContent))
 	if err != nil {
 		return nil, fmt.Errorf("template parsing failed: %w", err)
