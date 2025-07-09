@@ -19,7 +19,6 @@ type ManifestConfig struct {
 	Image            string            `json:"image"`
 	TimeoutLiveness  string            `json:"timeoutLiveness"`
 	TimeoutReadiness string            `json:"timeoutReadiness"`
-	HpaMaxReplicas   string            `json:"hpaMaxReplicas"`
 	HpaAvgCPU        string            `json:"hpaAvgCPU"`
 	HpaAvgMemory     string            `json:"hpaAvgMemory"`
 	Secrets          map[string]string `json:"secrets,omitempty"`

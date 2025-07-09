@@ -31,7 +31,6 @@ curl -fsSL https://raw.github.com/dantedelordran/maniplacer/main/installer.sh | 
     "image": "",
     "timeoutLiveness": "",
     "timeoutReadiness": "",
-    "hpaMaxReplicas": "",
     "hpaAvgCPU": "",
     "hpaAvgMemory": "",
     "secrets": {   <---- OPTIONAL
