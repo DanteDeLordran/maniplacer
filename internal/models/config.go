@@ -1,7 +1,6 @@
 package models
 
 type ManifestConfig struct {
-	ConfigMapName    string            `json:"configMapName"`
 	GatewayGKE       string            `json:"gatewayGKE"`
 	HostNameK8       string            `json:"hostNameK8"`
 	Name             string            `json:"name"`

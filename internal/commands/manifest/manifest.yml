@@ -39,6 +39,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ .Name }}
+  namespace: {{ .NameSpace }}
   labels:
     app: {{ .Name }}
 spec:
@@ -55,6 +56,7 @@ apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
   name: {{ .Name }}
+  namespace: {{ .NameSpace }}
 spec:
   default:
     checkIntervalSec: 30
@@ -79,6 +81,7 @@ metadata:
   labels:
     app: {{ .Name }}
   name: {{ .Name }}
+  namespace: {{ .NameSpace }}
 spec:
   progressDeadlineSeconds: 600
   replicas: {{ .Replicas }}
@@ -104,12 +107,12 @@ spec:
         - secretRef:
           name: {{ .Name }}
         resources:
-            limits:
-              cpu: 700m
-              memory: 1Gi
-            requests:
-              cpu: 70m
-              memory: 20Mi
+          limits:
+            cpu: 1500Mi
+            memory: 1200m
+          requests:
+            cpu: {{ .ReqCPU }}
+            memory: {{ .ReqMemory }}
         livenessProbe:
           failureThreshold: 3
           httpGet:

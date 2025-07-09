@@ -13,7 +13,6 @@ curl -fsSL https://raw.github.com/dantedelordran/maniplacer/main/installer.sh | 
 
 ```javascript
 {
-    "configMapName": "",
     "gatewayGKE": "",
     "hostNameK8": "",
     "name": "",
