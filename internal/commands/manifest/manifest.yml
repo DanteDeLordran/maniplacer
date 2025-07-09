@@ -1,18 +1,197 @@
-apiVersion: gateway.networking.k8s.io/v1
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: {{ .Name }}
+  namespace: {{ .NameSpace }}
+spec:
+  default: 
+    timeoutSec: {{ .TimeoutSec }}
+  targetRef: 
+    group: ""
+    kind: Service
+    name: {{ .Name }}
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
 metadata:
   name: {{ .Name }}
   namespace: {{ .NameSpace }}
 spec:
   parentRefs:
-  - name: example-gateway
+  - kind: Gateway
+    name: {{ .GatewayGKE }}
+    namespace: {{ .NameSpaceGateway }}
   hostnames:
-  - "www.example.com"
+  - "{{ .HostNameK8 }}"
   rules:
   - matches:
     - path:
         type: PathPrefix
-        value: /login
+        value: {{ .PathBase }}
     backendRefs:
-    - name: example-svc
-      port: 8080
+    - kind: Service
+      name: {{ .Name }}
+      namespace: {{ .NameSpace }}
+      port: {{ .PortService }}
+      weight: 100
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Name }}
+  labels:
+    app: {{ .Name }}
+spec:
+  selector:
+    app: {{ .Name }}
+  ports:
+  - name: http
+    protocol: TCP
+    port: {{ .PortService }}
+    targetPort: {{ .Port }}
+  type: ClusterIP
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: {{ .Name }}
+spec:
+  default:
+    checkIntervalSec: 30
+    logConfig:
+      enabled: true
+    config:
+      httpHealthCheck:
+        portSepcification: USE_SERVING_PORT
+        requestPath: {{ .PathReadiness }}
+      type: HTTP
+    healthyThreshold: 1
+    timeoutSec: 5
+    unhealthyThreshold: 3
+  targetRef: 
+    group: ""
+    kind: Service
+    name: {{ .Name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ .Name }}
+  name: {{ .Name }}
+spec:
+  progressDeadlineSeconds: 600
+  replicas: {{ .Replicas }}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: {{ .Name }}
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: {{ .Name }}
+    spec:
+      containers:
+      - image: {{ .Image }}
+        imagePullPolicy: Always
+        name: {{ .Name }}
+        envFrom:
+        - secretRef:
+          name: {{ .Name }}
+        resources:
+            limits:
+              cpu: 700m
+              memory: 1Gi
+            requests:
+              cpu: 70m
+              memory: 20Mi
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: {{ .PathLiveness }}
+            port: {{ .Port }}
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: {{ .TimeoutLiveness }}
+        readinessProbe:
+          httpGet:
+            path: {{ .PathReadiness }}
+            port: {{ .Port }}
+            scheme: HTTP
+          initialDelaySeconds: 10
+          timeoutSeconds: {{ .TimeoutReadiness }}
+          successThreshold: 1
+          periodSeconds: 30
+        ports:
+          - containerPort: {{ .PortService }}
+            name: http
+            protocol: TCP
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: false
+        stdin: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        tty: true
+        # volumeMounts:
+        # - mountPath: /sysx/progs/application.properties
+        #   name: auth-service-config
+        #   subPath: application.properties
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      terminationGracePeriodSeconds: 30
+      # volumes:
+      # - configMap:
+      #     defaultMode: 256
+      #     name: auth-service-config
+      #     optional: false
+      #   name: auth-service-config
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Name }}
+  namespace: {{ .NameSpace }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ .Name }}
+  minReplicas: 1
+  maxReplicas: {{ .MaxReplicas }}
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: {{ .HpaAvgCPU }}
+  - type: Resource
+    resource:
+      name: memory
+      target: 
+        type: Utilization
+        averageUtilization: {{ .HpaAvgMemory }}
+
+{{- if .Secrets }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{.Name}}
+  namespace: {{.NameSpace}}
+type: Opaque
+data:
+  {{- range $key, $value := .Secrets }}
+  {{ $key }}: {{ $value | b64enc }}
+  {{- end }}
+{{- end }}
