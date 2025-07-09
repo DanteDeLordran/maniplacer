@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"embed"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -82,7 +83,9 @@ func loadJson(path string) (*models.ManifestConfig, error) {
 }
 
 func replaceYaml(templateContent []byte, config *models.ManifestConfig) ([]byte, error) {
-	tmpl, err := template.New("manifest").Parse(string(templateContent))
+	tmpl, err := template.New("manifest").Funcs(template.FuncMap{"b64enc": func(s string) string {
+		return base64.StdEncoding.EncodeToString([]byte(s))
+	}}).Parse(string(templateContent))
 	if err != nil {
 		return nil, fmt.Errorf("template parsing failed: %w", err)
 	}

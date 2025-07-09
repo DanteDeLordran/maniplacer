@@ -181,3 +181,17 @@ spec:
       target: 
         type: Utilization
         averageUtilization: {{ .HpaAvgMemory }}
+
+{{- if .Secrets }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{.Name}}
+  namespace: {{.NameSpace}}
+type: Opaque
+data:
+  {{- range $key, $value := .Secrets }}
+  {{ $key }}: {{ $value | b64enc }}
+  {{- end }}
+{{- end }}
