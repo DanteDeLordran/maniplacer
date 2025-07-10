@@ -6,7 +6,7 @@ type ManifestConfig struct {
 	Name             string            `json:"name"`
 	NameSpace        string            `json:"nameSpace"`
 	NameSpaceGateway string            `json:"nameSpaceGateway"`
-	PathBase         string            `json:"pathBase"`
+	PathBase         string            `json:"pathBase,omitempty"`
 	PathLiveness     string            `json:"pathLiveness"`
 	PathReadiness    string            `json:"pathReadiness"`
 	PortService      string            `json:"portService"`

@@ -10,6 +10,8 @@ spec:
     group: ""
     kind: Service
     name: {{ .Name }}
+
+{{- if .PathBase }}
 ---
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: HTTPRoute
@@ -34,6 +36,7 @@ spec:
       namespace: {{ .NameSpace }}
       port: {{ .PortService }}
       weight: 100
+{{- end }}
 ---
 apiVersion: v1
 kind: Service
