@@ -16,6 +16,7 @@ curl -fsSL https://raw.github.com/dantedelordran/maniplacer/main/installer.sh | 
 4. Template will be saved on ```$HOME/maniplacer```
 5. Null ```pathBase``` will skip HTTPRoute component generation
 6. Null ```secrets``` will skip Secrets component generation
+7. Null ```config``` will skip ConfigMap component generation
 
 ## JSON structure
 
@@ -43,6 +44,9 @@ curl -fsSL https://raw.github.com/dantedelordran/maniplacer/main/installer.sh | 
     "hpaAvgMemory": "",
     "secrets": {   <---- OPTIONAL
         "SOME_SECRET": "some value",
+    },
+    "config": {    <---- OPTIONAL
+        "SOME_CONFIG": "",
     }
 }
 ```

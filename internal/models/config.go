@@ -22,4 +22,5 @@ type ManifestConfig struct {
 	HpaAvgCPU        string            `json:"hpaAvgCPU"`
 	HpaAvgMemory     string            `json:"hpaAvgMemory"`
 	Secrets          map[string]string `json:"secrets,omitempty"`
+	Config           map[string]string `json:"config,omitempty"`
 }

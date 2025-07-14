@@ -54,16 +54,16 @@ func NewManifest() {
 		os.Exit(1)
 	}
 
-	filename := fmt.Sprintf("manifest-%s-%s.yaml", config.NameSpace, time.Now().Format("20060102-150405"))
+	filename := fmt.Sprintf("%s-%s-%s.yaml", config.Name, config.NameSpace, time.Now().Format("20060102-150405"))
 	outputDir := filepath.Join(home, "maniplacer")
 
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0644); err != nil {
 		fmt.Println("Error creating dir due to", err)
 		os.Exit(1)
 	}
 
 	outputPath := filepath.Join(outputDir, filename)
-	if err := os.WriteFile(outputPath, yml, 0644); err != nil {
+	if err := os.WriteFile(outputPath, yml, 0444); err != nil {
 		fmt.Printf("Error saving manifest: %v\n", err)
 		os.Exit(1)
 	}

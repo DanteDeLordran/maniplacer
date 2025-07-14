@@ -2,7 +2,7 @@ package commands
 
 import "fmt"
 
-const VERSION = "1.0.0"
+const VERSION = "1.1.0"
 
 func Help() {
 	fmt.Println("Usage: maniplacer new -f <path to json>")
