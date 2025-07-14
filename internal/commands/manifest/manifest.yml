@@ -201,3 +201,16 @@ data:
   {{ $key }}: {{ $value | b64enc }}
   {{- end }}
 {{- end }}
+
+{{- if .Config }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{.Name}}-config
+  namespace: {{.NameSpace}}
+data:
+  {{- range $key, $value := .Config }}
+  {{ $key }}: {{ $value }}
+  {{- end }}
+{{- end }}
