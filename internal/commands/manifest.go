@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/template"
 	"time"
 
@@ -21,6 +22,7 @@ var embedManifest embed.FS
 func NewManifest() {
 	cmd := flag.NewFlagSet("new", flag.ExitOnError)
 	file := cmd.String("f", "", "Path to JSON config file")
+	target := cmd.String("t", "", "Path for the manifest to be stored")
 	cmd.Parse(os.Args[2:])
 
 	if *file == "" {
@@ -55,15 +57,24 @@ func NewManifest() {
 	}
 
 	filename := fmt.Sprintf("%s-%s-%s.yaml", config.Name, config.NameSpace, time.Now().Format("20060102-150405"))
-	outputDir := filepath.Join(home, "maniplacer")
 
-	if err := os.MkdirAll(outputDir, 0644); err != nil {
+	if *target == "" {
+		*target = "/maniplacer"
+	} else {
+		if strings.HasPrefix(*target, home) {
+			*target = strings.Replace(*target, home, "", -1)
+		}
+	}
+
+	outputDir := filepath.Join(home, *target)
+
+	if err := os.MkdirAll(outputDir, 0744); err != nil {
 		fmt.Println("Error creating dir due to", err)
 		os.Exit(1)
 	}
 
 	outputPath := filepath.Join(outputDir, filename)
-	if err := os.WriteFile(outputPath, yml, 0444); err != nil {
+	if err := os.WriteFile(outputPath, yml, 0644); err != nil {
 		fmt.Printf("Error saving manifest: %v\n", err)
 		os.Exit(1)
 	}
