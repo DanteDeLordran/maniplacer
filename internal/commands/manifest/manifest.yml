@@ -219,6 +219,6 @@ metadata:
   namespace: {{.NameSpace}}
 data:
   {{- range $key, $value := .Config }}
-  {{ $key }}: {{ $value }}
+  {{ $key }}: "{{ $value }}"
   {{- end }}
 {{- end }}
