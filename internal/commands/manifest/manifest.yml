@@ -67,7 +67,7 @@ spec:
       enabled: true
     config:
       httpHealthCheck:
-        portSepcification: USE_SERVING_PORT
+        portSpecification: USE_SERVING_PORT
         requestPath: {{ .PathReadiness }}
       type: HTTP
     healthyThreshold: 1
@@ -106,13 +106,21 @@ spec:
       - image: {{ .Image }}
         imagePullPolicy: Always
         name: {{ .Name }}
+        {{- if or .Secrets .Config }}
         envFrom:
-        - secretRef:
-          name: {{ .Name }}
+        {{- if .Secrets }}
+          - secretRef:
+              name: {{ .Name }}
+        {{- end }}
+        {{- if .Config }}
+          - configMapRef:
+              name: {{ .Name }}-config
+        {{- end }}
+        {{- end }}
         resources:
           limits:
-            cpu: 1500Mi
-            memory: 1200m
+            cpu: 1500m
+            memory: 1200Mi
           requests:
             cpu: {{ .ReqCPU }}
             memory: {{ .ReqMemory }}
