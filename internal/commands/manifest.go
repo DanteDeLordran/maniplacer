@@ -62,7 +62,7 @@ func NewManifest() {
 		*target = "/maniplacer"
 	} else {
 		if strings.HasPrefix(*target, home) {
-			*target = strings.Replace(*target, home, "", -1)
+			*target = strings.Replace(*target, home, "", 1)
 		}
 	}
 
