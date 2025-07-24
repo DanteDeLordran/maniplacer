@@ -8,6 +8,12 @@ Simple YAML K8s replacer from JSON file
 curl -fsSL https://raw.github.com/dantedelordran/maniplacer/main/installer.sh | bash
 ```
 
+## Want to try? Prepare a sandbox
+
+```bash
+docker run -it --name sandbox ubuntu:22.04 bash
+```
+
 ## How to use
 
 1. Generate a JSON file with the structure from below
@@ -49,4 +55,18 @@ curl -fsSL https://raw.github.com/dantedelordran/maniplacer/main/installer.sh | 
         "SOME_CONFIG": "",
     }
 }
+```
+
+## Build from source
+
+For building for your current OS
+
+```
+make
+```
+
+For building for multiple platforms
+
+```
+make release
 ```
