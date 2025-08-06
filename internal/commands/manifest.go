@@ -37,7 +37,6 @@ func NewManifest() {
 		os.Exit(1)
 	}
 
-	//manifest, err := os.ReadFile(filepath.Join("internal", "manifest", "manifest.yml"))
 	manifest, err := embedManifest.ReadFile("manifest/manifest.yml")
 	if err != nil {
 		fmt.Println("Error loading embeded yaml due to", err)
