@@ -3,7 +3,7 @@ set -e
 
 # Configuration
 TOOL_NAME="maniplacer"
-REPO_URL="https://github.com/dantedelordran/maniplacer"
+REPO_URL="https://github.com/dantedelordran/maniplacer-rebirth"
 INSTALL_DIR="$HOME/.local/bin"
 TEMP_DIR="/tmp/maniplacer-install"
 
@@ -99,7 +99,7 @@ get_latest_version() {
     info "Fetching latest version from GitHub..."
     
     # Try to get latest version with better error handling
-    LATEST_VERSION=$(curl -s --fail "https://api.github.com/repos/dantedelordran/maniplacer/releases/latest" | \
+    LATEST_VERSION=$(curl -s --fail "https://api.github.com/repos/dantedelordran/maniplacer-rebirth/releases/latest" | \
         grep '"tag_name":' | \
         sed -E 's/.*"([^"]+)".*/\1/' | \
         tr -d '\n\r')
