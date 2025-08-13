@@ -1,8 +1,10 @@
-- [ ] Version command
-- [ ] Init command
+- [ ] Version: Shows current version
+- [ ] Init: Inits a new project given a name and optional config type flag (default JSON)
 - [ ] Add command
 - [ ] Remove command
 - [ ] Generate command
 - [ ] List command
+- [ ] Update: Self update to latest version
 - [ ] Prune command
 - [ ] Apply command
+- [ ] Beautify UI
