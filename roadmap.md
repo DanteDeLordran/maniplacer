@@ -1,0 +1,8 @@
+- [ ] Version command
+- [ ] Init command
+- [ ] Add command
+- [ ] Remove command
+- [ ] Generate command
+- [ ] List command
+- [ ] Prune command
+- [ ] Apply command
