@@ -7,7 +7,7 @@
 ## Commands
 
 - [x] Version: Shows current version
-- [ ] Init: Inits a new project given a name and optional config type flag (default JSON)
+- [x] Init: Inits a new project given a name and optional config type flag (default JSON)
 - [ ] Add: Adds a new empty component template
 - [ ] Remove: Removes an empty component template by namespace
 - [ ] Generate: Generates a new manifest
@@ -19,3 +19,4 @@
 ## Enhancements
 
 - [ ] Beautify UI
+- [ ] YAML support
