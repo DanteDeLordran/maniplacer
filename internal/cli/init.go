@@ -12,6 +12,7 @@ var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initializes a project scaffolding",
 	Long:  `Initializes the scaffolding for a new Maniplacer project`,
+	Args:  cobra.MaximumNArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name, err := cmd.Flags().GetString("name")
 		if err != nil {
