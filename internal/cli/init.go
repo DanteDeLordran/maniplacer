@@ -1,10 +1,11 @@
-package cmd
+package cli
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/dantedelordran/maniplacer/internal/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -48,6 +49,12 @@ var initCmd = &cobra.Command{
 			return fmt.Errorf("failed to create config file: %w", err)
 		} else {
 			defer f.Close()
+		}
+
+		err = utils.CreateManiplacerProject(path)
+
+		if err != nil {
+			fmt.Printf("Error creating Maniplacer project file due to %s", err)
 		}
 
 		fmt.Println("Project initialized successfully.")
