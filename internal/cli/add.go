@@ -1,6 +1,3 @@
-/*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-*/
 package cli
 
 import (
@@ -14,21 +11,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type component string
-
-const (
-	deployment component = "deployment"
-	service    component = "service"
-	configmap  component = "configmap"
-)
-
-var allowedComponents = []string{string(deployment), string(service), string(configmap)}
-
 var addCmd = &cobra.Command{
 	Use:   "add",
 	Short: "Adds a new K8s component manifest file placeholder to your Maniplacer project for you to customize",
-	Long:  `The add command lets you create a new component placeholder and add it to your project`,
-	Args:  cobra.MinimumNArgs(1),
+	Long: `The add command lets you create a new component placeholder and add it to your project
+
+Available components:
+- Service
+- Deployment
+- HttpRoute
+- Secret
+- ConfigMap
+`,
+	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 
 		if !utils.IsValidProject() {
@@ -43,10 +38,10 @@ var addCmd = &cobra.Command{
 		}
 
 		for _, comp := range args {
-			if slices.Contains(allowedComponents, comp) {
+			if slices.Contains(templates.AllowedComponents, comp) {
 				fmt.Printf("Creating %s in templates directory in %s namespace\n", comp, namespace)
 
-				d := templates.DeploymentTemplate{}.Deployment()
+				t := templates.TemplateRegistry[comp]
 
 				current, err := os.Getwd()
 				if err != nil {
@@ -54,9 +49,15 @@ var addCmd = &cobra.Command{
 					os.Exit(1)
 				}
 
-				outputDir := filepath.Join(current, "templates", fmt.Sprintf("%s.yaml", comp))
+				err = os.MkdirAll(filepath.Join(current, "templates", namespace), 0744)
+				if err != nil {
+					fmt.Printf("Could not create templates namespace dir due to %s\n", err)
+					os.Exit(1)
+				}
 
-				if err := os.WriteFile(outputDir, d, 0644); err != nil {
+				outputDir := filepath.Join(current, "templates", namespace, fmt.Sprintf("%s.yaml", comp))
+
+				if err := os.WriteFile(outputDir, t, 0644); err != nil {
 					fmt.Printf("failed to write file: %s\n", err)
 					os.Exit(1)
 				}
