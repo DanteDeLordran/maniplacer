@@ -1,15 +1,14 @@
 /*
 Copyright © 2025 NAME HERE <EMAIL ADDRESS>
 */
-package cmd
+package cli
 
 import (
 	"fmt"
 
+	"github.com/dantedelordran/maniplacer/internal/utils"
 	"github.com/spf13/cobra"
 )
-
-const version = "1.0.0"
 
 const logo = `
                        _       _                     
@@ -34,5 +33,5 @@ func init() {
 }
 
 func getVersion() string {
-	return version
+	return utils.Version
 }
