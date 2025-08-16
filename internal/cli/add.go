@@ -39,7 +39,7 @@ Available components:
 
 		for _, comp := range args {
 			if slices.Contains(templates.AllowedComponents, comp) {
-				fmt.Printf("Creating %s in templates directory in %s namespace\n", comp, namespace)
+				fmt.Printf("Creating %s in templates directory in %s namespace...\n", comp, namespace)
 
 				t := templates.TemplateRegistry[comp]
 
