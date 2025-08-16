@@ -8,8 +8,8 @@
 
 - [x] Version: Shows current version
 - [x] Init: Inits a new project given a name and optional config type flag (default JSON)
-- [ ] Add: Adds a new empty component template
-- [ ] Remove: Removes an empty component template by namespace
+- [x] Add: Adds a new empty component template
+- [x] Remove: Removes a component template by namespace
 - [ ] Generate: Generates a new manifest
 - [ ] List: Lists all the manifests in order filtered by namespace
 - [ ] Update: Self update to latest version
