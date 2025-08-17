@@ -14,15 +14,29 @@ import (
 var addCmd = &cobra.Command{
 	Use:   "add",
 	Short: "Adds a new K8s component manifest file placeholder to your Maniplacer project for you to customize",
-	Long: `The add command lets you create a new component placeholder and add it to your project
+	Long: `The add command creates a new Kubernetes component placeholder manifest 
+and adds it to your Maniplacer project under the templates directory. 
+
+You can specify one or more components to add, and they will be generated 
+as YAML files that you can later customize to suit your application's needs. 
+This helps you quickly scaffold the most common Kubernetes resources 
+without having to write them from scratch.
+
+By default, the manifests are placed inside the "default" namespace folder, 
+but you can override this with the --namespace (or -n) flag.
 
 Available components:
-- Service
-- Deployment
-- HttpRoute
-- Secret
-- ConfigMap
-`,
+- Service       (Exposes your application as a network service)
+- Deployment    (Defines application workloads with replicas and containers)
+- HttpRoute     (Configures HTTP routing for traffic management)
+- Secret        (Stores sensitive information like passwords and API keys)
+- ConfigMap     (Holds configuration data as key-value pairs)
+
+Example usage:
+  maniplacer add deployment service -n staging
+
+This will create deployment.yaml and service.yaml inside the 
+templates/staging directory of your project.`,
 	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 

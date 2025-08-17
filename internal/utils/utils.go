@@ -1,10 +1,12 @@
 package utils
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type ManiplacerProject struct {
@@ -39,4 +41,12 @@ func IsValidProject() bool {
 	}
 
 	return true
+}
+
+func ConfirmMessage(message string) bool {
+	fmt.Printf("%s [y/N]: ", message)
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(strings.ToLower(input))
+	return input == "y" || input == "yes"
 }
