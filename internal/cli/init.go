@@ -33,6 +33,12 @@ After initialization, you can run 'maniplacer add' to add Kubernetes components
 and start customizing them for your project.`,
 	Args: cobra.MaximumNArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
+
+		if utils.IsValidProject() {
+			fmt.Printf("Can not init a project since project already exists in current dir\n")
+			os.Exit(1)
+		}
+
 		name, err := cmd.Flags().GetString("name")
 		if err != nil {
 			fmt.Println("Could not get name flag: ", err)

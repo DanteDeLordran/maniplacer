@@ -20,7 +20,6 @@
 
 - [ ] Beautify UI
 - [ ] YAML support
-- [ ] Validate existing Maniplacer project befor initing another
-- [ ] Regenerate templates dir if was deleted
+- [x] Validate existing Maniplacer project before initing another
 - [x] Dockerfile for sandboxing
-- [ ] After creating a component, ask if you want to override if already exists
+- [x] After creating a component, ask if you want to override if already exists
