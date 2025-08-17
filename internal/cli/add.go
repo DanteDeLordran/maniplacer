@@ -71,12 +71,26 @@ templates/staging directory of your project.`,
 
 				outputDir := filepath.Join(current, "templates", namespace, fmt.Sprintf("%s.yaml", comp))
 
-				if err := os.WriteFile(outputDir, t, 0644); err != nil {
-					fmt.Printf("failed to write file: %s\n", err)
+				if _, err := os.Stat(outputDir); err == nil {
+					// File exists
+					confirmed := utils.ConfirmMessage(fmt.Sprintf("%s already exists, do you want to replace it?", filepath.Base(outputDir)))
+					if !confirmed {
+						fmt.Printf("Skipping %s...\n", filepath.Base(outputDir))
+						continue
+					}
+				} else if !os.IsNotExist(err) {
+					// Some unexpected error (e.g. permission issue)
+					fmt.Printf("Error checking file %s: %s\n", outputDir, err)
 					os.Exit(1)
 				}
 
-				fmt.Printf("%s.yaml successfully generated!\n", comp)
+				// Either the file does not exist, or user confirmed overwrite
+				if err := os.WriteFile(outputDir, t, 0644); err != nil {
+					fmt.Printf("Failed to write file: %s\n", err)
+					os.Exit(1)
+				}
+
+				fmt.Printf("%s.yaml successfully generated in %s namespace!\n", comp, namespace)
 
 			} else {
 				fmt.Printf("No component with name %s, skipping...\n", comp)
