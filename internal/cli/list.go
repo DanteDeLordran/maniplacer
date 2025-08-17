@@ -12,8 +12,16 @@ import (
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Lists every manifest from a given namespace",
-	Long:  `Lists every manifest from a given namespace`,
-	Args:  cobra.MaximumNArgs(0),
+	Long: `The list command displays all manifest files in the specified namespace.
+
+By default, it lists manifests in the 'default' namespace.
+Manifests are expected to be located inside the 'manifests/<namespace>' directory
+of a valid Maniplacer project.
+
+Examples:
+  maniplacer list
+  maniplacer list --namespace production`,
+	Args: cobra.MaximumNArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
 
 		if !utils.IsValidProject() {
