@@ -22,7 +22,10 @@ const logo = `
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Returns the current version of Maniplacer",
-	Long:  `Returns the current version of Maniplacer`,
+	Long: `Displays the current version of Maniplacer along with the project logo.
+
+The version is defined internally at build time, allowing you to quickly
+verify which release of Maniplacer you are running.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("%s\nVersion: %s\n", logo, getVersion())
 	},

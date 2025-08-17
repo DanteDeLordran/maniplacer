@@ -16,7 +16,21 @@ import (
 var updateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "A brief description of your command",
-	Long:  `A`,
+	Long: `Checks GitHub for the latest release of Maniplacer and updates the local binary if a newer version is available.
+
+By default, the command will ask for confirmation before updating.  
+You can skip confirmation with the --force flag.
+
+The update process:
+1. Fetches the latest release version from GitHub.
+2. Compares it with the currently installed version.
+3. If a newer version exists, downloads the appropriate binary for your OS/ARCH.
+4. Creates a backup of the existing binary.
+5. Replaces the old binary with the new one via an update script (applied after the process exits).
+
+Example:
+  maniplacer update
+  maniplacer update --force`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		force, err := cmd.Flags().GetBool("force")

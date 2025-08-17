@@ -12,8 +12,26 @@ import (
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initializes a project scaffolding",
-	Long:  `Initializes the scaffolding for a new Maniplacer project`,
-	Args:  cobra.MaximumNArgs(0),
+	Long: `The init command initializes the scaffolding for a new Maniplacer project.
+
+It sets up the required project directory structure and configuration files 
+so you can start managing Kubernetes manifests immediately.
+
+Specifically, it will:
+- Create a project root directory (if --name is provided, it will use that name, otherwise the current directory).
+- Generate the required subdirectories: 
+  * templates/   → for storing reusable Kubernetes manifest templates.
+  * manifests/   → for placing your customized manifests ready to be applied.
+- Create a default config.json file in the project root.
+- Register the project as a valid Maniplacer project.
+
+Example usage:
+  maniplacer init
+  maniplacer init --name my-app
+
+After initialization, you can run 'maniplacer add' to add Kubernetes components
+and start customizing them for your project.`,
+	Args: cobra.MaximumNArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name, err := cmd.Flags().GetString("name")
 		if err != nil {
