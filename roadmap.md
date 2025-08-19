@@ -17,7 +17,6 @@
 
 ## Enhancements
 
-- [ ] Beautify UI
 - [ ] YAML support
 - [x] Validate existing Maniplacer project before initing another
 - [x] Dockerfile for sandboxing
