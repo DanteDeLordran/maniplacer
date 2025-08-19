@@ -8,6 +8,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/dantedelordran/maniplacer/internal/templates"
 	"github.com/dantedelordran/maniplacer/internal/utils"
 	"github.com/spf13/cobra"
 )
@@ -102,7 +103,7 @@ Notes:
 				continue
 			}
 
-			templ, err := template.New(file.Name()).Parse(string(content))
+			templ, err := template.New(file.Name()).Funcs(templates.ManiplacerFuncs).Parse(string(content))
 			if err != nil {
 				fmt.Printf("Could not parse %s due to %s\n", file.Name(), err)
 				continue
