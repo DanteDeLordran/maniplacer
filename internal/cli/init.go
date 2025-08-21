@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/dantedelordran/maniplacer/internal/utils"
 	"github.com/spf13/cobra"
@@ -55,33 +57,55 @@ and start customizing them for your project.`,
 			}
 		}
 
-		if name != "" {
-			path = filepath.Join(path, name)
-			fmt.Println("Creating project on: ", path)
-		} else {
-			fmt.Println("Creating project on current dir")
-		}
+		if name == "" {
 
-		dirs := []string{"", "templates", "manifests"}
-		for _, d := range dirs {
-			if err := os.MkdirAll(filepath.Join(path, d), 0744); err != nil {
-				return fmt.Errorf("failed to create directory %q: %w", d, err)
+			confirm := utils.ConfirmMessage("No name given for project, do you want to use current dir?")
+			if confirm {
+				fmt.Println("Creating project on current dir...")
+			} else {
+				fmt.Printf("No project will be created :P\n")
+				os.Exit(1)
 			}
+
 		}
 
-		if f, err := os.Create(filepath.Join(path, "config.json")); err != nil {
-			return fmt.Errorf("failed to create config file: %w", err)
-		} else {
-			defer f.Close()
+		path = filepath.Join(path, name)
+
+		if err := os.MkdirAll(path, 0744); err != nil {
+			return fmt.Errorf("failed to create directory %w", err)
 		}
 
 		err = utils.CreateManiplacerProject(path)
-
 		if err != nil {
 			fmt.Printf("Error creating Maniplacer project file due to %s", err)
 		}
 
 		fmt.Println("Project initialized successfully.")
+
+		confirm := utils.ConfirmMessage("Would you like to init a new repo inside your project? (You can create one later with maniplacer new <name>)")
+		if confirm {
+			name := getRepoName()
+
+			dirs := []string{"", "templates", "manifests"}
+
+			for _, dir := range dirs {
+				if err := os.MkdirAll(filepath.Join(path, name, dir), 0744); err != nil {
+					return fmt.Errorf("failed to create directory %w", err)
+				}
+			}
+
+			if f, err := os.Create(filepath.Join(path, name, "config.json")); err != nil {
+				return fmt.Errorf("failed to create config file: %w", err)
+			} else {
+				defer f.Close()
+			}
+
+			fmt.Printf("Successfully created %s repo\n", name)
+
+		} else {
+			fmt.Println("Skipping repo init")
+		}
+
 		return nil
 	},
 }
@@ -89,4 +113,16 @@ and start customizing them for your project.`,
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().StringP("name", "n", "", "Name of the new project")
+}
+
+func getRepoName() string {
+	fmt.Printf("What would be the name of your repo?: ")
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Printf("Could not read input due to: %s\n", err)
+		os.Exit(1)
+	}
+	input = strings.TrimSpace(strings.ToLower(input))
+	return input
 }

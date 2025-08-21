@@ -12,7 +12,8 @@
 - [x] Generate: Generates a new manifest
 - [x] List: Lists all the manifests in order filtered by namespace
 - [x] Update: Self update to latest version
-- [x] Prune: Removes every generated manifest for every namespace (ask for confirmation)
+- [x] Prune: Removes every generated manifest for every namespace (ask for confirmation)\
+- [ ] New: Creates a new repo inside project
 - [ ] Apply: Performs a kubectl apply to the latest manifest (ask for confirmation)
 
 ## Enhancements
@@ -21,5 +22,4 @@
 - [x] Validate existing Maniplacer project before initing another
 - [x] Dockerfile for sandboxing
 - [x] After creating a component, ask if you want to override if already exists
-- [ ] Naming convenction for config.json (for automatically use dev namespace, name file as: config-dev.json (config-*namespace*.json))
-- [ ] Do not generate manifests until every template was successfully parsed
+- [ ] Change project structure
