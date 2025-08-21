@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/dantedelordran/maniplacer/internal/utils"
 	"github.com/spf13/cobra"
@@ -12,25 +14,28 @@ import (
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initializes a project scaffolding",
-	Long: `The init command initializes the scaffolding for a new Maniplacer project.
+	Long: `The init command bootstraps a new Maniplacer project by creating the required folder structure and configuration files. 
 
-It sets up the required project directory structure and configuration files 
-so you can start managing Kubernetes manifests immediately.
+It prepares the environment so you can immediately start adding and generating Kubernetes manifests. If a project name is provided with --name (or -n), it creates a new project folder with that name. Otherwise, it can initialize the project in the current working directory after confirmation.
 
-Specifically, it will:
-- Create a project root directory (if --name is provided, it will use that name, otherwise the current directory).
-- Generate the required subdirectories: 
-  * templates/   → for storing reusable Kubernetes manifest templates.
-  * manifests/   → for placing your customized manifests ready to be applied.
-- Create a default config.json file in the project root.
-- Register the project as a valid Maniplacer project.
+During initialization, the following happens:
+- A project root is created and registered as a valid Maniplacer project.
+- The required directories are set up:
+  * templates/   → for reusable Kubernetes component templates.
+  * manifests/   → for generated manifests ready to be applied.
+- A default config.json file is created in the project root.
+- Optional: you can initialize a new repository inside the project, which sets up its own templates/ and manifests/ directories, along with a config.json file.
+
+This makes it easy to start from a clean, organized structure without having to manually configure everything.
 
 Example usage:
   maniplacer init
   maniplacer init --name my-app
 
-After initialization, you can run 'maniplacer add' to add Kubernetes components
-and start customizing them for your project.`,
+After initialization, you can:
+- Add components with 'maniplacer add'
+- Generate manifests with 'maniplacer generate'
+- Manage multiple repos inside the same project for different environments or services.`,
 	Args: cobra.MaximumNArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
 
@@ -55,33 +60,55 @@ and start customizing them for your project.`,
 			}
 		}
 
-		if name != "" {
-			path = filepath.Join(path, name)
-			fmt.Println("Creating project on: ", path)
-		} else {
-			fmt.Println("Creating project on current dir")
-		}
+		if name == "" {
 
-		dirs := []string{"", "templates", "manifests"}
-		for _, d := range dirs {
-			if err := os.MkdirAll(filepath.Join(path, d), 0744); err != nil {
-				return fmt.Errorf("failed to create directory %q: %w", d, err)
+			confirm := utils.ConfirmMessage("No name given for project, do you want to use current dir?")
+			if confirm {
+				fmt.Println("Creating project on current dir...")
+			} else {
+				fmt.Printf("No project will be created :P\n")
+				os.Exit(1)
 			}
+
 		}
 
-		if f, err := os.Create(filepath.Join(path, "config.json")); err != nil {
-			return fmt.Errorf("failed to create config file: %w", err)
-		} else {
-			defer f.Close()
+		path = filepath.Join(path, name)
+
+		if err := os.MkdirAll(path, 0744); err != nil {
+			return fmt.Errorf("failed to create directory %w", err)
 		}
 
 		err = utils.CreateManiplacerProject(path)
-
 		if err != nil {
 			fmt.Printf("Error creating Maniplacer project file due to %s", err)
 		}
 
 		fmt.Println("Project initialized successfully.")
+
+		confirm := utils.ConfirmMessage("Would you like to init a new repo inside your project? (You can create one later with maniplacer new <name>)")
+		if confirm {
+			name := getRepoName()
+
+			dirs := []string{"", "templates", "manifests"}
+
+			for _, dir := range dirs {
+				if err := os.MkdirAll(filepath.Join(path, name, dir), 0744); err != nil {
+					return fmt.Errorf("failed to create directory %w", err)
+				}
+			}
+
+			if f, err := os.Create(filepath.Join(path, name, "config.json")); err != nil {
+				return fmt.Errorf("failed to create config file: %w", err)
+			} else {
+				defer f.Close()
+			}
+
+			fmt.Printf("Successfully created %s repo\n", name)
+
+		} else {
+			fmt.Println("Skipping repo init")
+		}
+
 		return nil
 	},
 }
@@ -89,4 +116,16 @@ and start customizing them for your project.`,
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().StringP("name", "n", "", "Name of the new project")
+}
+
+func getRepoName() string {
+	fmt.Printf("What would be the name of your repo?: ")
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Printf("Could not read input due to: %s\n", err)
+		os.Exit(1)
+	}
+	input = strings.TrimSpace(strings.ToLower(input))
+	return input
 }

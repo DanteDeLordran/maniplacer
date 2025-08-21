@@ -16,26 +16,27 @@ import (
 var generateCmd = &cobra.Command{
 	Use:   "generate",
 	Short: "Generates the manifest given a config.json file and at least one template",
-	Long: `Generates Kubernetes manifests from templates and a configuration file.
+	Long: `The generate command renders Kubernetes manifests by combining your project’s templates with values provided in a JSON configuration file.
 
-The 'generate' command reads a JSON configuration file (default: config.json) and one or more templates
-from the 'templates' directory of your Maniplacer project. Each template is applied with the values from
-the configuration file and generates a Kubernetes manifest.
+It scans the 'templates/<namespace>/' directory of your Maniplacer project, applies the values from the configuration file (default: config.json), and writes the rendered manifests into 'manifests/<namespace>/<timestamp>/'. 
+Each run is timestamped, ensuring outputs from previous runs are preserved instead of being overwritten.
 
-Generated manifests are saved under 'manifests/<namespace>/<timestamp>/', where <namespace> is the
-template namespace and <timestamp> ensures each run is stored in a unique folder.
+You can customize the input config file with the --file (or -f) flag, select a template namespace with the --namespace (or -n) flag, and specify the target repository with the --repo (or -r) flag.
+
+Typical workflow:
+1. Define your application values in a config.json file.
+2. Create or edit Kubernetes resource templates under 'templates/<namespace>/'.
+3. Run 'maniplacer generate' to render manifests into a dedicated timestamped output folder.
 
 Example usage:
-
   maniplacer generate
-  maniplacer generate -n default
-  maniplacer generate -f myconfig.json -n develop
+  maniplacer generate -n staging
+  maniplacer generate -f custom.json -n production -r myrepo
 
 Notes:
-
-- The current directory must be a valid Maniplacer project (i.e., contain a '.maniplacer' file).
-- Templates must exist under 'templates/<namespace>/'.
-- Each run creates a timestamped output folder to avoid overwriting previous manifests.`,
+- The current directory must be a valid Maniplacer project (contain a '.maniplacer' file).
+- The specified namespace must exist under the 'templates' directory.
+- Each run creates a unique timestamped output folder for safe, repeatable generation.`,
 	Args: cobra.MaximumNArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
 
@@ -56,16 +57,9 @@ Notes:
 			file = "config.json"
 		}
 
-		configFile, err := os.ReadFile(file)
+		repo, err := cmd.Flags().GetString("repo")
 		if err != nil {
-			fmt.Printf("Could not read config file due to %s\n", err)
-			os.Exit(1)
-		}
-
-		var config map[string]any
-		err = json.Unmarshal(configFile, &config)
-		if err != nil {
-			fmt.Printf("Could not unmarshal config file %s\n", err)
+			fmt.Printf("Could not get repo flag due to %s\n", err)
 			os.Exit(1)
 		}
 
@@ -75,7 +69,7 @@ Notes:
 			os.Exit(1)
 		}
 
-		templateDir := filepath.Join(currentDir, "templates", namespace)
+		templateDir := filepath.Join(currentDir, repo, "templates", namespace)
 
 		_, err = os.Stat(templateDir)
 		if err != nil {
@@ -91,6 +85,20 @@ Notes:
 
 		if len(files) == 0 {
 			fmt.Printf("Empty template namespace\n")
+			os.Exit(1)
+		}
+
+		configFile, err := os.ReadFile(filepath.Join(currentDir, repo, file))
+		if err != nil {
+			fmt.Printf("Could not read config file due to %s\n", err)
+			os.Exit(1)
+		}
+
+		var config map[string]any
+		err = json.Unmarshal(configFile, &config)
+		if err != nil {
+			fmt.Printf("Could not unmarshal config file %s\n", err)
+			os.Exit(1)
 		}
 
 		for _, file := range files {
@@ -109,7 +117,7 @@ Notes:
 				continue
 			}
 
-			outputDir := filepath.Join(currentDir, "manifests", namespace, time.Now().Format("2006-01-02_15-04-05"))
+			outputDir := filepath.Join(currentDir, repo, "manifests", namespace, time.Now().Format("2006-01-02_15-04-05"))
 			err = os.MkdirAll(outputDir, 0744)
 			if err != nil {
 				fmt.Printf("Could not create output dir %s due to %s\n", outputDir, err)
@@ -140,4 +148,5 @@ func init() {
 	rootCmd.AddCommand(generateCmd)
 	generateCmd.Flags().StringP("file", "f", "config.json", "Config file for generating manifest")
 	generateCmd.Flags().StringP("namespace", "n", "default", "Namespace for template to be generated")
+	generateCmd.Flags().StringP("repo", "r", "", "Repo name")
 }
