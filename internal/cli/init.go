@@ -94,6 +94,12 @@ and start customizing them for your project.`,
 				}
 			}
 
+			if f, err := os.Create(filepath.Join(path, name, "config.json")); err != nil {
+				return fmt.Errorf("failed to create config file: %w", err)
+			} else {
+				defer f.Close()
+			}
+
 			fmt.Printf("Successfully created %s repo\n", name)
 
 		} else {
