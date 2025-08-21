@@ -23,4 +23,5 @@
 - [x] Dockerfile for sandboxing
 - [x] After creating a component, ask if you want to override if already exists
 - [x] Change project structure
-- [ ] Remake long desc
+- [x] Remake long desc
+- [ ] Use config file naming convenction for automatic namespace apply

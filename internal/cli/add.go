@@ -14,29 +14,28 @@ import (
 var addCmd = &cobra.Command{
 	Use:   "add",
 	Short: "Adds a new K8s component manifest file placeholder to your Maniplacer project for you to customize",
-	Long: `The add command creates a new Kubernetes component placeholder manifest 
-and adds it to your Maniplacer project under the templates directory. 
+	Long: `The add command scaffolds new Kubernetes component manifests and places them in your Maniplacer project’s templates directory. 
 
-You can specify one or more components to add, and they will be generated 
-as YAML files that you can later customize to suit your application's needs. 
-This helps you quickly scaffold the most common Kubernetes resources 
-without having to write them from scratch.
+It allows you to generate one or multiple component YAML files at once, so you don’t have to manually write boilerplate configurations every time you add a resource. 
+This saves time and ensures your manifests follow a consistent structure.
 
-By default, the manifests are placed inside the "default" namespace folder, 
-but you can override this with the --namespace (or -n) flag.
+By default, generated manifests are placed under the "default" namespace, but you can override this with the --namespace (or -n) flag. 
+You can also specify the target repository directory with the --repo (or -r) flag to control where the files are created.
 
 Available components:
-- Service       (Exposes your application as a network service)
-- Deployment    (Defines application workloads with replicas and containers)
-- HttpRoute     (Configures HTTP routing for traffic management)
-- Secret        (Stores sensitive information like passwords and API keys)
-- ConfigMap     (Holds configuration data as key-value pairs)
+- Service       (Expose your application as a network-accessible service)
+- Deployment    (Define workloads with containers, replicas, and rollout strategy)
+- HttpRoute     (Configure HTTP routing rules for ingress traffic)
+- Secret        (Securely store sensitive values like tokens, passwords, and certificates)
+- ConfigMap     (Provide configuration values and environment variables as key-value pairs)
+
+If a file already exists, you will be prompted to confirm before overwriting it, preventing accidental data loss.
 
 Example usage:
-  maniplacer add deployment service -n staging
+  maniplacer add deployment service -n staging -r myrepo
 
-This will create deployment.yaml and service.yaml inside the 
-templates/staging directory of your project.`,
+This command generates deployment.yaml and service.yaml in the 
+templates/staging directory of the "myrepo" project.`,
 	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 

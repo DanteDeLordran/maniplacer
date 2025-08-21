@@ -14,25 +14,28 @@ import (
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initializes a project scaffolding",
-	Long: `The init command initializes the scaffolding for a new Maniplacer project.
+	Long: `The init command bootstraps a new Maniplacer project by creating the required folder structure and configuration files. 
 
-It sets up the required project directory structure and configuration files 
-so you can start managing Kubernetes manifests immediately.
+It prepares the environment so you can immediately start adding and generating Kubernetes manifests. If a project name is provided with --name (or -n), it creates a new project folder with that name. Otherwise, it can initialize the project in the current working directory after confirmation.
 
-Specifically, it will:
-- Create a project root directory (if --name is provided, it will use that name, otherwise the current directory).
-- Generate the required subdirectories: 
-  * templates/   → for storing reusable Kubernetes manifest templates.
-  * manifests/   → for placing your customized manifests ready to be applied.
-- Create a default config.json file in the project root.
-- Register the project as a valid Maniplacer project.
+During initialization, the following happens:
+- A project root is created and registered as a valid Maniplacer project.
+- The required directories are set up:
+  * templates/   → for reusable Kubernetes component templates.
+  * manifests/   → for generated manifests ready to be applied.
+- A default config.json file is created in the project root.
+- Optional: you can initialize a new repository inside the project, which sets up its own templates/ and manifests/ directories, along with a config.json file.
+
+This makes it easy to start from a clean, organized structure without having to manually configure everything.
 
 Example usage:
   maniplacer init
   maniplacer init --name my-app
 
-After initialization, you can run 'maniplacer add' to add Kubernetes components
-and start customizing them for your project.`,
+After initialization, you can:
+- Add components with 'maniplacer add'
+- Generate manifests with 'maniplacer generate'
+- Manage multiple repos inside the same project for different environments or services.`,
 	Args: cobra.MaximumNArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
 

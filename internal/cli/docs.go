@@ -10,8 +10,20 @@ import (
 var docsCmd = &cobra.Command{
 	Use:   "docs",
 	Short: "Documentation and examples for Maniplacer",
-	Long:  ``,
-	Args:  cobra.MaximumNArgs(0),
+	Long: `The docs command launches a lightweight local web server that serves Maniplacer’s documentation and template examples. 
+
+By default, the server runs on port 8000, but you can override this with the --port (or -p) flag. 
+Once started, the documentation is available at http://localhost:<port>/docs, where you can explore built-in functions, templating syntax, and practical usage examples.
+
+This feature is useful when you want quick access to examples without leaving your terminal environment or searching external docs. 
+It provides live, interactive reference material for customizing Kubernetes component manifests with Maniplacer’s template engine.
+
+Example usage:
+  maniplacer docs -p 9000
+
+This will start the documentation server on port 9000, and you can access it at:
+  http://localhost:9000/docs`,
+	Args: cobra.MaximumNArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
 		port, err := cmd.Flags().GetString("port")
 		if err != nil {

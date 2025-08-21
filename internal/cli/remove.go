@@ -15,7 +15,8 @@ var removeCmd = &cobra.Command{
 	Long: `Removes one or more components from the templates directory in the given namespace. 
 If no namespace is specified, the "default" namespace is used.
 
-This command deletes the corresponding YAML files under "templates/<namespace>".
+This command deletes the corresponding YAML files under "templates/<namespace>" 
+inside the specified repository.
 
 Supported components include:
 - Service
@@ -24,8 +25,9 @@ Supported components include:
 - Secret
 - ConfigMap
 
-You can specify multiple components at once, e.g.:
-  maniplacer remove Service Deployment -n my-namespace`,
+Examples:
+  maniplacer remove Service -r myrepo
+  maniplacer remove Service Deployment -n staging -r myrepo`,
 	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 
