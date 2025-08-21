@@ -86,8 +86,12 @@ and start customizing them for your project.`,
 		if confirm {
 			name := getRepoName()
 
-			if err := os.MkdirAll(filepath.Join(path, name), 0744); err != nil {
-				return fmt.Errorf("failed to create directory %w", err)
+			dirs := []string{"", "templates", "manifests"}
+
+			for _, dir := range dirs {
+				if err := os.MkdirAll(filepath.Join(path, name, dir), 0744); err != nil {
+					return fmt.Errorf("failed to create directory %w", err)
+				}
 			}
 
 			fmt.Printf("Successfully created %s repo\n", name)
