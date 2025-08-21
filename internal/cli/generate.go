@@ -56,16 +56,9 @@ Notes:
 			file = "config.json"
 		}
 
-		configFile, err := os.ReadFile(file)
+		repo, err := cmd.Flags().GetString("repo")
 		if err != nil {
-			fmt.Printf("Could not read config file due to %s\n", err)
-			os.Exit(1)
-		}
-
-		var config map[string]any
-		err = json.Unmarshal(configFile, &config)
-		if err != nil {
-			fmt.Printf("Could not unmarshal config file %s\n", err)
+			fmt.Printf("Could not get repo flag due to %s\n", err)
 			os.Exit(1)
 		}
 
@@ -75,7 +68,7 @@ Notes:
 			os.Exit(1)
 		}
 
-		templateDir := filepath.Join(currentDir, "templates", namespace)
+		templateDir := filepath.Join(currentDir, repo, "templates", namespace)
 
 		_, err = os.Stat(templateDir)
 		if err != nil {
@@ -91,6 +84,20 @@ Notes:
 
 		if len(files) == 0 {
 			fmt.Printf("Empty template namespace\n")
+			os.Exit(1)
+		}
+
+		configFile, err := os.ReadFile(filepath.Join(currentDir, repo, file))
+		if err != nil {
+			fmt.Printf("Could not read config file due to %s\n", err)
+			os.Exit(1)
+		}
+
+		var config map[string]any
+		err = json.Unmarshal(configFile, &config)
+		if err != nil {
+			fmt.Printf("Could not unmarshal config file %s\n", err)
+			os.Exit(1)
 		}
 
 		for _, file := range files {
@@ -109,7 +116,7 @@ Notes:
 				continue
 			}
 
-			outputDir := filepath.Join(currentDir, "manifests", namespace, time.Now().Format("2006-01-02_15-04-05"))
+			outputDir := filepath.Join(currentDir, repo, "manifests", namespace, time.Now().Format("2006-01-02_15-04-05"))
 			err = os.MkdirAll(outputDir, 0744)
 			if err != nil {
 				fmt.Printf("Could not create output dir %s due to %s\n", outputDir, err)
@@ -140,4 +147,5 @@ func init() {
 	rootCmd.AddCommand(generateCmd)
 	generateCmd.Flags().StringP("file", "f", "config.json", "Config file for generating manifest")
 	generateCmd.Flags().StringP("namespace", "n", "default", "Namespace for template to be generated")
+	generateCmd.Flags().StringP("repo", "r", "", "Repo name")
 }

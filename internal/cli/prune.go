@@ -45,13 +45,19 @@ This will delete all manifests under the 'staging' namespace if confirmed.`,
 			namespace = "default"
 		}
 
+		repo, err := cmd.Flags().GetString("repo")
+		if err != nil {
+			fmt.Printf("Could not get repo flag due to %s\n", err)
+			os.Exit(1)
+		}
+
 		currentDir, err := os.Getwd()
 		if err != nil {
 			fmt.Printf("Could not get current dir due to %s\n", err)
 			os.Exit(1)
 		}
 
-		currentDir = filepath.Join(currentDir, "manifests", namespace)
+		currentDir = filepath.Join(currentDir, repo, "manifests", namespace)
 
 		_, err = os.Stat(currentDir)
 		if err != nil {
@@ -90,4 +96,5 @@ This will delete all manifests under the 'staging' namespace if confirmed.`,
 func init() {
 	rootCmd.AddCommand(pruneCmd)
 	pruneCmd.Flags().StringP("namespace", "n", "default", "Namespace for pruning manifests")
+	pruneCmd.Flags().StringP("repo", "r", "", "Repo name")
 }

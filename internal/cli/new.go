@@ -45,7 +45,7 @@ var newCmd = &cobra.Command{
 			}
 		}
 
-		if f, err := os.Create(filepath.Join(repoPath, name, "config.json")); err != nil {
+		if f, err := os.Create(filepath.Join(repoPath, "config.json")); err != nil {
 			fmt.Printf("failed to create config file: %s", err)
 			os.Exit(1)
 		} else {

@@ -51,25 +51,33 @@ templates/staging directory of your project.`,
 			namespace = "default"
 		}
 
+		repo, err := cmd.Flags().GetString("repo")
+		if err != nil {
+			fmt.Printf("Could not get repo flag due to %s\n", err)
+			os.Exit(1)
+		}
+
+		current, err := os.Getwd()
+		if err != nil {
+			fmt.Printf("Could not get current dir due to %s\n", err)
+			os.Exit(1)
+		}
+
+		repoPath := filepath.Join(current, repo)
+
 		for _, comp := range args {
 			if slices.Contains(templates.AllowedComponents, comp) {
 				fmt.Printf("Creating %s in templates directory in %s namespace...\n", comp, namespace)
 
 				t := templates.TemplateRegistry[comp]
 
-				current, err := os.Getwd()
-				if err != nil {
-					fmt.Printf("Could not get current dir due to %s\n", err)
-					os.Exit(1)
-				}
-
-				err = os.MkdirAll(filepath.Join(current, "templates", namespace), 0744)
+				err = os.MkdirAll(filepath.Join(repoPath, "templates", namespace), 0744)
 				if err != nil {
 					fmt.Printf("Could not create templates namespace dir due to %s\n", err)
 					os.Exit(1)
 				}
 
-				outputDir := filepath.Join(current, "templates", namespace, fmt.Sprintf("%s.yaml", comp))
+				outputDir := filepath.Join(repoPath, "templates", namespace, fmt.Sprintf("%s.yaml", comp))
 
 				if _, err := os.Stat(outputDir); err == nil {
 					// File exists
@@ -102,4 +110,5 @@ templates/staging directory of your project.`,
 func init() {
 	rootCmd.AddCommand(addCmd)
 	addCmd.Flags().StringP("namespace", "n", "default", "Namespace for your component template")
+	addCmd.Flags().StringP("repo", "r", "", "Repo name")
 }

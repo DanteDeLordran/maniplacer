@@ -35,21 +35,27 @@ Examples:
 			namespace = "default"
 		}
 
-		currentDir, err := os.Getwd()
+		repo, err := cmd.Flags().GetString("repo")
+		if err != nil {
+			fmt.Printf("Could not get repo flag due to %s\n", err)
+			os.Exit(1)
+		}
+
+		manifestsDir, err := os.Getwd()
 		if err != nil {
 			fmt.Printf("Could not get current dir due to %s\n", err)
 			os.Exit(1)
 		}
 
-		currentDir = filepath.Join(currentDir, "manifests", namespace)
+		manifestsDir = filepath.Join(manifestsDir, repo, "manifests", namespace)
 
-		_, err = os.Stat(currentDir)
+		_, err = os.Stat(manifestsDir)
 		if err != nil {
 			fmt.Printf("Manifest dir does not exists %s\n", err)
 			os.Exit(1)
 		}
 
-		files, err := os.ReadDir(currentDir)
+		files, err := os.ReadDir(manifestsDir)
 		if err != nil {
 			fmt.Printf("Could not read manifests dir due to %s\n", err)
 			os.Exit(1)
@@ -66,4 +72,5 @@ Examples:
 func init() {
 	rootCmd.AddCommand(listCmd)
 	listCmd.Flags().StringP("namespace", "n", "default", "Namespace for listing manifests")
+	listCmd.Flags().StringP("repo", "r", "", "Repo name")
 }
