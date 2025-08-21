@@ -46,7 +46,20 @@ func IsValidProject() bool {
 func ConfirmMessage(message string) bool {
 	fmt.Printf("%s [y/N]: ", message)
 	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Printf("Could not read input due to: %s\n", err)
+		os.Exit(1)
+	}
 	input = strings.TrimSpace(strings.ToLower(input))
 	return input == "y" || input == "yes"
+}
+
+func CreateConfigFile(path string, filetype string) error {
+	if f, err := os.Create(filepath.Join(path, "config.json")); err != nil {
+		return fmt.Errorf("failed to create config file: %w", err)
+	} else {
+		defer f.Close()
+		return nil
+	}
 }
