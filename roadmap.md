@@ -21,5 +21,4 @@
 - [x] Validate existing Maniplacer project before initing another
 - [x] Dockerfile for sandboxing
 - [x] After creating a component, ask if you want to override if already exists
-- [ ] Naming convenction for config.json (for automatically use dev namespace, name file as: config-dev.json (config-*namespace*.json))
-- [ ] Do not generate manifests until every template was successfully parsed
+- [ ] Change project structure
