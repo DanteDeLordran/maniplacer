@@ -13,7 +13,7 @@
 - [x] List: Lists all the manifests in order filtered by namespace
 - [x] Update: Self update to latest version
 - [x] Prune: Removes every generated manifest for every namespace (ask for confirmation)\
-- [ ] New: Creates a new repo inside project
+- [x] New: Creates a new repo inside project
 - [ ] Apply: Performs a kubectl apply to the latest manifest (ask for confirmation)
 
 ## Enhancements
@@ -22,4 +22,6 @@
 - [x] Validate existing Maniplacer project before initing another
 - [x] Dockerfile for sandboxing
 - [x] After creating a component, ask if you want to override if already exists
-- [ ] Change project structure
+- [x] Change project structure
+- [x] Remake long desc
+- [ ] Use config file naming convenction for automatic namespace apply
