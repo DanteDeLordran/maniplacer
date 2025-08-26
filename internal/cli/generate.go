@@ -11,6 +11,7 @@ import (
 	"github.com/dantedelordran/maniplacer/internal/templates"
 	"github.com/dantedelordran/maniplacer/internal/utils"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var generateCmd = &cobra.Command{
@@ -51,10 +52,9 @@ Notes:
 			namespace = "default"
 		}
 
-		file, err := cmd.Flags().GetString("file")
+		format, err := cmd.Flags().GetString("format")
 		if err != nil {
 			fmt.Printf("Could not parse file flag, using default\n")
-			file = "config.json"
 		}
 
 		repo, err := cmd.Flags().GetString("repo")
@@ -88,17 +88,31 @@ Notes:
 			os.Exit(1)
 		}
 
-		configFile, err := os.ReadFile(filepath.Join(currentDir, repo, file))
+		configFile, err := os.ReadFile(filepath.Join(currentDir, repo, fmt.Sprintf("config.%s", format)))
 		if err != nil {
 			fmt.Printf("Could not read config file due to %s\n", err)
 			os.Exit(1)
 		}
 
 		var config map[string]any
-		err = json.Unmarshal(configFile, &config)
-		if err != nil {
-			fmt.Printf("Could not unmarshal config file %s\n", err)
-			os.Exit(1)
+
+		fileExtension := filepath.Ext(filepath.Join(currentDir, repo, fmt.Sprintf("config.%s", format)))
+
+		switch fileExtension {
+		case ".json":
+			fmt.Printf("Found JSON config file\n")
+			err = json.Unmarshal(configFile, &config)
+			if err != nil {
+				fmt.Printf("Could not unmarshal JSON config file %s\n", err)
+				os.Exit(1)
+			}
+		case ".yaml", ".yml":
+			fmt.Printf("Found YAML config file\n")
+			err = yaml.Unmarshal(configFile, &config)
+			if err != nil {
+				fmt.Printf("Could not unmarshal YAML config file %s\n", err)
+				os.Exit(1)
+			}
 		}
 
 		for _, file := range files {
@@ -146,7 +160,7 @@ Notes:
 
 func init() {
 	rootCmd.AddCommand(generateCmd)
-	generateCmd.Flags().StringP("file", "f", "config.json", "Config file for generating manifest")
+	generateCmd.Flags().StringP("format", "f", "json", "Config file format for generating manifest")
 	generateCmd.Flags().StringP("namespace", "n", "default", "Namespace for template to be generated")
 	generateCmd.Flags().StringP("repo", "r", "", "Repo name")
 }
