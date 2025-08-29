@@ -18,7 +18,7 @@
 
 ## Enhancements
 
-- [ ] YAML support
+- [x] YAML support
 - [x] Validate existing Maniplacer project before initing another
 - [x] Dockerfile for sandboxing
 - [x] After creating a component, ask if you want to override if already exists
