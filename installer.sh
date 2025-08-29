@@ -123,10 +123,18 @@ check_existing_installation() {
         
         if [ "$CLEAN_CURRENT" = "$CLEAN_LATEST" ]; then
             info "You already have the latest version installed."
-            read -p "Do you want to reinstall? (y/N): " -r
-            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                info "Installation cancelled."
-                exit 0
+            
+            # Check if running in non-interactive mode (piped from curl)
+            if [ -t 0 ]; then
+                # Interactive mode - ask user
+                read -p "Do you want to reinstall? (y/N): " -r
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    info "Installation cancelled."
+                    exit 0
+                fi
+            else
+                # Non-interactive mode - proceed with reinstall
+                info "Non-interactive mode detected. Proceeding with reinstall..."
             fi
         fi
     fi
