@@ -1,20 +1,29 @@
 # Maniplacer
-A CLI tool for generating Kubernetes YAML manifests from templates with intelligent configuration handling.
+
+A powerful Kubernetes manifest templating tool that simplifies the creation and management of K8s resources through customizable templates and configuration-driven generation.
+
+## Overview
+
+Maniplacer helps you manage Kubernetes manifests efficiently by:
+- **Scaffolding** new component templates with sensible defaults
+- **Templating** manifests using Go's template engine with custom functions
+- **Generating** production-ready manifests from configuration files
+- **Organizing** resources by namespace and repository structure
 
 ## Features
-- **Project scaffolding** - Initialize new projects with `init`
-- **Template management** - Add, list, and remove templates (`add`, `list`, `remove`)
-- **Smart manifest generation** - Generate manifests from templates with automatic config detection (`generate`)
-- **Multiple config formats** - Support for JSON and YAML configuration files
-- **Intelligent config detection** - Automatically detects and handles multiple config files
-- **Easy updates** - Update the CLI easily via `update`
-- **Namespace support** - Organize templates and manifests by namespaces
-- **Rich template helpers** - Base64, ToUpper, ToLower, and more built-in functions
-- **Timestamped outputs** - Each generation creates a unique timestamped folder
 
-## How to Install
+- 🚀 **Project Management**: Initialize projects and create repositories with `init` and `new`
+- 🔧 **Template Management**: Add, remove, and list component templates
+- 📁 **Smart Generation**: Generate manifests with intelligent config detection
+- 🔄 **Multi-format Support**: Works with JSON and YAML configuration files
+- 📚 **Built-in Documentation**: Local documentation server with examples
+- ⏰ **Timestamped Outputs**: Each generation creates a unique timestamped folder
+- 🧹 **Cleanup Tools**: Prune manifests and remove templates easily
+- 🔄 **Self-updating**: Update to latest version from GitHub releases
 
-### Via Script
+## Installation
+
+### Via Curl (Recommended)
 ```bash
 curl -fsSL https://raw.github.com/dantedelordran/maniplacer/main/installer.sh | bash
 ```
@@ -26,101 +35,317 @@ cd maniplacer
 make build
 ```
 
-## Quickstart
+## Quick Start
 
-### Initialize a New Project
+### 1. Initialize a Project
+
 ```bash
-# Create a new project
-maniplacer init my-project
-cd my-project
+# Create a new Maniplacer project in current directory
+maniplacer init
+
+# Or create a new project with a specific name
+maniplacer init --name my-k8s-project
 ```
 
-This creates the following structure:
+### 2. Create a Repository
+
 ```bash
-my-project/
-├── templates/
-│   └── default/
-├── manifests/
-├── config.json          # Default JSON config
-├── config.yaml          # Alternative YAML config (optional)
-└── .maniplacer          # Project marker file
+# Create a new repository within your project
+maniplacer new myapp
 ```
 
-### Prepare a Sandbox (Optional)
+### 3. Add Component Templates
+
 ```bash
-docker build -t maniplacer:latest .
-docker run -it --name sandbox maniplacer:latest
+# Add templates for common Kubernetes resources
+maniplacer add deployment service configmap -n production -r myapp
+
+# Available components:
+# - deployment    (workloads with containers and replicas)
+# - service       (network-accessible services)
+# - httpRoute     (HTTP routing rules)
+# - secret        (secure storage for sensitive data)
+# - configmap     (configuration key-value pairs)
 ```
 
-## Configuration Files
+### 4. Create Configuration
 
-Maniplacer supports multiple configuration formats and intelligent detection:
+Create a `config.yaml` (or `config.json`) in your repository directory:
 
-### Supported Formats
-- **JSON**: `config.json`
-- **YAML**: `config.yaml` or `config.yml`
+```yaml
+# config.yaml
+name: myapp
+namespace: production
+replicas: 3
+image: myapp:v1.2.3
+port: 8080
 
-### Smart Detection
-- **Single config file**: Automatically detects and uses it
-- **Multiple config files**: Prompts you to choose which one to use
-- **Custom config files**: Use `-c` flag to specify any config file
-- **Format specification**: Use `-f` flag to specify format explicitly
+secrets:
+  db_password: supersecret123
+  api_key: abc123xyz789
+```
 
-### Example Configuration Files
+### 5. Generate Manifests
 
-**config.json**
+```bash
+# Generate manifests from templates
+maniplacer generate -n production -r myapp
+
+# Use specific config format
+maniplacer generate -f yaml -n production -r myapp
+
+# Use custom config file
+maniplacer generate -c custom-config.json -n production -r myapp
+```
+
+### 6. List Generated Manifests
+
+```bash
+# List all manifests in a namespace
+maniplacer list -n production -r myapp
+
+# List manifests in default namespace
+maniplacer list -r myapp
+```
+
+## Project Structure
+
+```
+my-k8s-project/
+├── .maniplacer              # Project marker file
+├── myapp/                   # Repository directory
+│   ├── config.yaml          # Configuration values
+│   ├── templates/           # Template definitions
+│   │   └── production/      # Namespace-specific templates
+│   │       ├── deployment.yaml
+│   │       ├── service.yaml
+│   │       └── configmap.yaml
+│   └── manifests/           # Generated outputs
+│       └── production/      # Namespace-specific manifests
+│           └── 2024-01-15_14-30-45/  # Timestamped generation
+│               ├── deployment.yaml
+│               ├── service.yaml
+│               └── configmap.yaml
+```
+
+## Template Engine
+
+Maniplacer uses Go's powerful template engine with custom functions:
+
+### Basic Templating
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .name }}
+  namespace: {{ .namespace }}
+type: Opaque
+data:
+  {{- range $key, $value := .secrets }}
+  {{ $key }}: {{ $value | Base64 | Quote }}
+  {{- end }}
+```
+
+### Built-in Functions
+- **`Base64`** - Encode strings to Base64
+- **`ToUpper`** - Convert to uppercase
+- **`ToLower`** - Convert to lowercase  
+- **`Quote`** - Wrap in quotes
+
+### Example Usage
+```yaml
+# Template
+env:
+- name: DATABASE_URL
+  value: {{ .db_url | Quote }}
+- name: APP_ENV
+  value: {{ .environment | ToUpper | Quote }}
+```
+
+## Commands
+
+### `maniplacer init`
+Bootstrap a new Maniplacer project with the required folder structure.
+
+```bash
+# Initialize in current directory (with confirmation)
+maniplacer init
+
+# Create new project with specific name
+maniplacer init --name my-k8s-project
+
+# Available options:
+# -n, --name        Project name (creates new directory if specified)
+```
+
+During initialization:
+- Creates project root and marks it as a valid Maniplacer project
+- Sets up required directories (templates/, manifests/)
+- Optionally creates a default repository with config.json
+
+### `maniplacer new`
+Create a new repository within an existing Maniplacer project.
+
+```bash
+# Create a new repository
+maniplacer new frontend
+maniplacer new backend-api
+
+# Each repository gets:
+# - templates/ directory for resource templates
+# - manifests/ directory for generated files
+# - config.json configuration file
+```
+
+### `maniplacer add`
+Scaffold new Kubernetes component templates.
+
+```bash
+# Add single component
+maniplacer add deployment -n staging -r myrepo
+
+# Add multiple components
+maniplacer add deployment service secret -n production -r myapp
+
+# Available options:
+# -n, --namespace   Target namespace (default: "default")
+# -r, --repo        Repository name (required)
+```
+
+### `maniplacer generate`
+Generate manifests from templates and configuration.
+
+```bash
+# Basic generation
+maniplacer generate -r myrepo
+
+# Specify namespace and format
+maniplacer generate -n production -f yaml -r myrepo
+
+# Use custom config file
+maniplacer generate -c /path/to/config.json -r myrepo
+
+# Available options:
+# -n, --namespace   Template namespace (default: "default")
+# -f, --format      Config format: json, yaml, yml (auto-detected if not specified)
+# -r, --repo        Repository name (required)
+# -c, --config      Custom config file path
+```
+
+### `maniplacer list`
+Display all generated manifests in a specific namespace and repository.
+
+```bash
+# List manifests in default namespace
+maniplacer list -r myrepo
+
+# List manifests in specific namespace
+maniplacer list -n production -r backend-service
+
+# Available options:
+# -n, --namespace   Target namespace (default: "default")
+# -r, --repo        Repository name (required)
+```
+
+### `maniplacer remove`
+Remove component templates from the templates directory.
+
+```bash
+# Remove single component
+maniplacer remove service -n production -r myrepo
+
+# Remove multiple components
+maniplacer remove deployment service configmap -n staging -r myapp
+
+# Available options:
+# -n, --namespace   Target namespace (default: "default")
+# -r, --repo        Repository name (required)
+```
+
+### `maniplacer prune`
+Delete all generated manifests in a specific namespace (with confirmation).
+
+```bash
+# Prune manifests in default namespace
+maniplacer prune -r myrepo
+
+# Prune manifests in specific namespace
+maniplacer prune -n staging -r myapp
+
+# Available options:
+# -n, --namespace   Target namespace (default: "default")  
+# -r, --repo        Repository name (required)
+```
+
+### `maniplacer update`
+Update Maniplacer to the latest version from GitHub releases.
+
+```bash
+# Check for updates and update with confirmation
+maniplacer update
+
+# Force update without confirmation
+maniplacer update --force
+
+# Available options:
+# -f, --force       Skip confirmation prompt
+```
+
+The update process:
+1. Fetches the latest release from GitHub
+2. Compares with current version
+3. Downloads appropriate binary for your OS/architecture
+4. Creates backup and replaces binary via update script
+
+### `maniplacer docs`
+Launch local documentation server with examples and function reference.
+
+```bash
+# Start docs server (default port 8000)
+maniplacer docs
+
+# Use custom port
+maniplacer docs -p 9000
+
+# Available options:
+# -p, --port        Server port (default: "8000")
+```
+
+Access documentation at: `http://localhost:8000/docs`
+
+## Configuration Formats
+
+### JSON Configuration
 ```json
 {
-  "appName": "my-app",
-  "version": "1.0.0",
+  "name": "myapp",
+  "namespace": "production",
   "replicas": 3,
-  "image": "nginx:latest",
-  "ports": [80, 443]
+  "image": "myapp:v1.2.3",
+  "secrets": {
+    "db_password": "supersecret123",
+    "api_key": "abc123xyz789"
+  }
 }
 ```
 
-**config.yaml**
+### YAML Configuration
 ```yaml
-appName: my-app
-version: "1.0.0"
+name: myapp
+namespace: production
 replicas: 3
-image: nginx:latest
-ports:
-  - 80
-  - 443
+image: myapp:v1.2.3
+secrets:
+  db_password: supersecret123
+  api_key: abc123xyz789
 ```
 
-## Usage Examples
+## Smart Configuration Detection
 
-### Basic Generation
-```bash
-# Auto-detect config file and generate manifests
-maniplacer generate
+Maniplacer intelligently handles configuration files:
 
-# Use specific namespace
-maniplacer generate -n production
-
-# Specify repository
-maniplacer generate -r my-repo
-```
-
-### Configuration Options
-```bash
-# Prefer YAML format (if multiple configs exist)
-maniplacer generate -f yaml
-
-# Use custom config file
-maniplacer generate -c production.json
-
-# Use custom config with explicit format
-maniplacer generate -c my-config.txt -f json
-
-# Combine all options
-maniplacer generate -c prod.yaml -f yaml -n production -r backend
-```
-
-### Interactive Config Selection
-When multiple config files exist, Maniplacer will prompt you:
+### Multiple Config Files
+When multiple config files exist, Maniplacer prompts you to choose:
 ```bash
 Multiple configuration files found:
   1) config.json
@@ -128,124 +353,138 @@ Multiple configuration files found:
 
 Please choose which config file to use (1-2): 1
 Selected: config.json
-Using JSON config file: /path/to/config.json
 ```
 
-### Template Management
+### Config File Priority
+- **Custom path** (`-c` flag): Highest priority
+- **Format preference** (`-f` flag): Uses preferred format if available
+- **Auto-detection**: Finds and uses available config files
+- **Interactive selection**: Prompts when multiple files exist
+
+## Advanced Usage
+
+### Multiple Namespaces
+Organize templates and manifests by environment:
+
 ```bash
-# Add a new template
-maniplacer add deployment.yaml
+# Development environment
+maniplacer add deployment service -n development -r myapp
+maniplacer generate -n development -r myapp
 
-# List all templates
-maniplacer list
+# Staging environment  
+maniplacer add deployment service -n staging -r myapp
+maniplacer generate -n staging -r myapp
 
-# Remove a template
-maniplacer remove deployment.yaml
-
-# Work with specific namespace
-maniplacer add -n staging service.yaml
-maniplacer list -n staging
+# Production environment
+maniplacer add deployment service -n production -r myapp
+maniplacer generate -n production -r myapp
 ```
 
-## Command Reference
-
-### `maniplacer init <project-name>`
-Initialize a new Maniplacer project with the specified name.
-
-### `maniplacer generate [flags]`
-Generate Kubernetes manifests from templates and configuration.
-
-**Flags:**
-- `-f, --format string`: Config file format (json, yaml, yml). Auto-detects if not specified
-- `-n, --namespace string`: Template namespace (default "default")
-- `-r, --repo string`: Repository name
-- `-c, --config string`: Custom path to config file
-
-### `maniplacer add <template-file> [flags]`
-Add a new template to the project.
-
-**Flags:**
-- `-n, --namespace string`: Target namespace (default "default")
-
-### `maniplacer list [flags]`
-List all templates in the project.
-
-**Flags:**
-- `-n, --namespace string`: Filter by namespace
-
-### `maniplacer remove <template-file> [flags]`
-Remove a template from the project.
-
-**Flags:**
-- `-n, --namespace string`: Target namespace (default "default")
-
-### `maniplacer update [flags]`
-Update Maniplacer to the latest version.
-
-**Flags:**
-- `-f, --force`: Force update even if already on latest version
-
-## Template Helpers
-
-Maniplacer provides built-in template functions for common operations:
+### Complex Templates
+Create sophisticated templates with loops and conditionals:
 
 ```yaml
-# String manipulation
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .appName | ToLower }}
-  labels:
-    version: {{ .version | ToUpper }}
-
-# Base64 encoding
-data:
-  config: {{ .configData | Base64 }}
-
-# And more helpers available...
+  name: {{ .name }}
+  namespace: {{ .namespace }}
+spec:
+  replicas: {{ .replicas }}
+  selector:
+    matchLabels:
+      app: {{ .name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .name }}
+    spec:
+      containers:
+      - name: {{ .name }}
+        image: {{ .image }}
+        ports:
+        - containerPort: {{ .port }}
+        env:
+        {{- range $key, $value := .env }}
+        - name: {{ $key | ToUpper }}
+          value: {{ $value | Quote }}
+        {{- end }}
+        {{- if .secrets }}
+        envFrom:
+        - secretRef:
+            name: {{ .name }}-secrets
+        {{- end }}
 ```
 
-## Output Structure
+### Workflow Examples
 
-Generated manifests are organized with timestamps for safe, repeatable generation:
-
+#### Complete Development Workflow
 ```bash
-manifests/
-├── default/
-│   ├── 2024-01-15_14-30-45/
-│   │   ├── deployment.yaml
-│   │   └── service.yaml
-│   └── 2024-01-15_15-22-10/
-│       ├── deployment.yaml
-│       └── service.yaml
-└── production/
-    └── 2024-01-15_16-45-30/
-        ├── deployment.yaml
-        └── configmap.yaml
-```
+# 1. Initialize project
+maniplacer init --name my-microservice
+cd my-microservice
 
-## Update to Latest Version
+# 2. Create repositories for different services
+maniplacer new frontend
+maniplacer new backend
+maniplacer new database
 
-```bash
-# Standard update
-maniplacer update
+# 3. Add templates for each service
+maniplacer add deployment service -n production -r frontend
+maniplacer add deployment service configmap -n production -r backend
+maniplacer add deployment service secret -n production -r database
 
-# Force update
-maniplacer update -f
+# 4. Generate manifests
+maniplacer generate -n production -r frontend
+maniplacer generate -n production -r backend
+maniplacer generate -n production -r database
+
+# 5. List generated manifests
+maniplacer list -n production -r frontend
+
+# 6. Clean up when needed
+maniplacer prune -n production -r frontend
 ```
 
 ## Best Practices
 
-1. **Use descriptive config files** - Name your configs based on environment (e.g., `config-prod.yaml`)
-2. **Organize by namespaces** - Separate templates for different environments or applications
-3. **Version control everything** - Keep templates, configs, and generated manifests in git
+1. **Use descriptive repository names** - Name repos based on service or component (e.g., `frontend`, `api`, `database`)
+2. **Organize by namespaces** - Separate templates for different environments (`development`, `staging`, `production`)
+3. **Version control everything** - Keep templates, configs, and important generated manifests in git
 4. **Test templates** - Generate manifests in development before deploying to production
 5. **Leverage template helpers** - Use built-in functions for common transformations
+6. **Clean regularly** - Use `prune` to remove old manifests and `remove` to clean up unused templates
+
+## Troubleshooting
+
+### Common Issues
+
+**"Current directory is not a valid Maniplacer project"**
+- Ensure you're in a directory with a `.maniplacer` file
+- Run `maniplacer init` if you haven't initialized the project
+
+**"No configuration file found"**
+- Create a `config.json` or `config.yaml` file in your repository directory
+- Use the `-c` flag to specify a custom config file path
+
+**"Template directory not found"**
+- Add templates using `maniplacer add` before generating
+- Verify the namespace and repository names are correct
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+## Support
+
+- 📖 **Documentation**: Run `maniplacer docs` for interactive examples
+- 🐛 **Issues**: Report bugs on [GitHub Issues](https://github.com/dantedelordran/maniplacer/issues)
+- 💬 **Discussions**: Join conversations in [GitHub Discussions](https://github.com/dantedelordran/maniplacer/discussions)
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+Made with ❤️ for Kubernetes developers who love clean, organized manifest management.
