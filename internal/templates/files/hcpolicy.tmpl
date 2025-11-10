@@ -1,0 +1,22 @@
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata: 
+  name: ""
+  namespace: ""
+spec:
+  default:
+    checkIntervalSec: 30
+    logConfig:
+      enabled: true
+    config:
+      httpHealthCheck:
+        portSpecification: USE_SERVING_PORT
+        requestPath: ""
+      type: HTTP
+    healthyThreshold: 1
+    timeoutSec: 5
+    unhealthyThreshold: 3
+  targetRef:
+    group: ""
+    kind: Service
+    name: ""
