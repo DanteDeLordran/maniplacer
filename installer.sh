@@ -46,29 +46,29 @@ trap cleanup EXIT
 # Check prerequisites
 check_prerequisites() {
     info "Checking prerequisites..."
-    
+
     if ! command_exists curl; then
         error "curl is required but not installed. Please install curl and try again."
     fi
-    
+
     if ! command_exists grep; then
         error "grep is required but not installed."
     fi
-    
+
     if ! command_exists sed; then
         error "sed is required but not installed."
     fi
-    
+
     success "All prerequisites satisfied"
 }
 
 # Detect OS and architecture
 detect_platform() {
     info "Detecting platform..."
-    
+
     OS=$(uname -s | tr '[:upper:]' '[:lower:]')
     ARCH=$(uname -m)
-    
+
     # Map OS names
     case "$OS" in
         "linux") OS="linux" ;;
@@ -76,7 +76,7 @@ detect_platform() {
         "mingw"*|"msys"*|"cygwin"*) OS="windows" ;;
         *) error "Unsupported OS: $OS" ;;
     esac
-    
+
     # Map architecture naming
     case "$ARCH" in
         "x86_64"|"amd64") ARCH="amd64" ;;
@@ -84,30 +84,30 @@ detect_platform() {
         "i386"|"i686") ARCH="386" ;;
         *) warning "Unknown architecture: $ARCH, defaulting to amd64"; ARCH="amd64" ;;
     esac
-    
+
     # Set binary name with extension for Windows
     BINARY_NAME="maniplacer-${OS}-${ARCH}"
     if [ "$OS" = "windows" ]; then
         BINARY_NAME="${BINARY_NAME}.exe"
     fi
-    
+
     info "Platform detected: $OS/$ARCH"
 }
 
 # Get latest release version
 get_latest_version() {
     info "Fetching latest version from GitHub..."
-    
+
     # Try to get latest version with better error handling
     LATEST_VERSION=$(curl -s --fail "https://api.github.com/repos/dantedelordran/maniplacer/releases/latest" | \
         grep '"tag_name":' | \
         sed -E 's/.*"([^"]+)".*/\1/' | \
         tr -d '\n\r')
-    
+
     if [ -z "$LATEST_VERSION" ]; then
         error "Failed to fetch latest version from GitHub API"
     fi
-    
+
     info "Latest version: $LATEST_VERSION"
 }
 
@@ -116,14 +116,14 @@ check_existing_installation() {
     if command_exists "$TOOL_NAME"; then
         CURRENT_VERSION=$($TOOL_NAME --version 2>/dev/null || echo "unknown")
         warning "$TOOL_NAME is already installed (version: $CURRENT_VERSION)"
-        
+
         # Remove 'v' prefix for comparison if present
         CLEAN_LATEST=${LATEST_VERSION#v}
         CLEAN_CURRENT=${CURRENT_VERSION#v}
-        
+
         if [ "$CLEAN_CURRENT" = "$CLEAN_LATEST" ]; then
             info "You already have the latest version installed."
-            
+
             # Check if running in non-interactive mode (piped from curl)
             if [ -t 0 ]; then
                 # Interactive mode - ask user
@@ -144,44 +144,44 @@ check_existing_installation() {
 download_binary() {
     info "Creating temporary directory..."
     mkdir -p "$TEMP_DIR"
-    
+
     # Construct download URL
     DOWNLOAD_URL="$REPO_URL/releases/download/$LATEST_VERSION/$BINARY_NAME"
-    
+
     info "Downloading $TOOL_NAME $LATEST_VERSION ($OS/$ARCH)..."
     info "Download URL: $DOWNLOAD_URL"
-    
+
     # Download with progress bar and better error handling
     if ! curl -L --fail --progress-bar "$DOWNLOAD_URL" -o "$TEMP_DIR/$TOOL_NAME"; then
         error "Download failed. Please check if the release exists for your platform."
     fi
-    
+
     # Verify download
     if [ ! -f "$TEMP_DIR/$TOOL_NAME" ]; then
         error "Downloaded file not found"
     fi
-    
+
     # Check if file is actually downloaded (not empty)
     if [ ! -s "$TEMP_DIR/$TOOL_NAME" ]; then
         error "Downloaded file is empty"
     fi
-    
+
     success "Download completed"
 }
 
 # Install binary
 install_binary() {
     info "Installing $TOOL_NAME..."
-    
+
     # Create install directory
     mkdir -p "$INSTALL_DIR"
-    
+
     # Make executable
     chmod +x "$TEMP_DIR/$TOOL_NAME"
-    
+
     # Move to install directory
     mv "$TEMP_DIR/$TOOL_NAME" "$INSTALL_DIR/"
-    
+
     success "Binary installed to $INSTALL_DIR/$TOOL_NAME"
 }
 
@@ -192,13 +192,13 @@ update_path() {
         info "$INSTALL_DIR is already in PATH"
         return
     fi
-    
+
     info "Adding $INSTALL_DIR to PATH..."
-    
+
     # Detect shell and update appropriate RC file
     SHELL_NAME=$(basename "$SHELL")
     RC_FILE=""
-    
+
     case "$SHELL_NAME" in
         "bash")
             if [ -f "$HOME/.bashrc" ]; then
@@ -220,7 +220,7 @@ update_path() {
             fi
             ;;
     esac
-    
+
     if [ -n "$RC_FILE" ]; then
         # Check if the export line already exists
         if ! grep -q "export PATH.*$INSTALL_DIR" "$RC_FILE" 2>/dev/null; then
@@ -239,14 +239,14 @@ update_path() {
 # Verify installation
 verify_installation() {
     info "Verifying installation..."
-    
+
     # Add to current PATH for verification
     export PATH="$INSTALL_DIR:$PATH"
-    
+
     if ! command_exists "$TOOL_NAME"; then
         error "Installation verification failed. $TOOL_NAME not found in PATH."
     fi
-    
+
     # Test version command
     VERSION_OUTPUT=$($TOOL_NAME version 2>/dev/null || echo "")
     if [ -z "$VERSION_OUTPUT" ]; then
@@ -254,7 +254,7 @@ verify_installation() {
     else
         info "Installed version: $VERSION_OUTPUT"
     fi
-    
+
     success "Installation verified successfully!"
 }
 
@@ -262,7 +262,7 @@ verify_installation() {
 main() {
     echo "🚀 $TOOL_NAME Installer"
     echo "========================"
-    
+
     check_prerequisites
     detect_platform
     get_latest_version
@@ -271,7 +271,7 @@ main() {
     install_binary
     update_path
     verify_installation
-    
+
     echo ""
     success "Successfully installed $TOOL_NAME $LATEST_VERSION!"
     echo ""
