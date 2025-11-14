@@ -14,7 +14,7 @@ import (
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initializes a project scaffolding",
-	Long: `The init command bootstraps a new Maniplacer project by creating the required folder structure and configuration files. 
+	Long: `The init command bootstraps a new Maniplacer project by creating the required folder structure and configuration files.
 
 It prepares the environment so you can immediately start adding and generating Kubernetes manifests. If a project name is provided with --name (or -n), it creates a new project folder with that name. Otherwise, it can initialize the project in the current working directory after confirmation.
 
@@ -36,7 +36,7 @@ After initialization, you can:
 - Add components with 'maniplacer add'
 - Generate manifests with 'maniplacer generate'
 - Manage multiple repos inside the same project for different environments or services.`,
-	Args: cobra.MaximumNArgs(0),
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		if utils.IsValidProject() {
@@ -44,10 +44,9 @@ After initialization, you can:
 			os.Exit(1)
 		}
 
-		name, err := cmd.Flags().GetString("name")
-		if err != nil {
-			fmt.Println("Could not get name flag: ", err)
-			return err
+		name := ""
+		if len(args) > 0 {
+			name = args[0]
 		}
 
 		path, err := os.Getwd()
@@ -109,13 +108,14 @@ After initialization, you can:
 			fmt.Println("Skipping repo init")
 		}
 
+		fmt.Printf("Run 'cd %s'\n", path)
+
 		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(initCmd)
-	initCmd.Flags().StringP("name", "n", "", "Name of the new project")
 }
 
 func getRepoName() string {
