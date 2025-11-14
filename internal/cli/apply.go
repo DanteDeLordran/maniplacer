@@ -166,10 +166,11 @@ func createResources(projectPath string, defaultNamespace string) {
 		}
 
 		existingNamespace, err := k8sClient.CoreV1().Namespaces().Get(ctx, namespace, v1.GetOptions{})
+		fmt.Println(existingNamespace)
 		if err != nil {
 			fmt.Printf("Could not get existing namespace %s\n", err)
 		}
-		if existingNamespace == nil {
+		if existingNamespace.Name == "" {
 			fmt.Printf("The namespace %s does not exists, do you want to create it? (y/N)\n", namespace)
 			var response string
 			fmt.Scanln(&response)
