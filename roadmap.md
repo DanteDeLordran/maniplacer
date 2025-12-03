@@ -14,7 +14,8 @@
 - [x] Update: Self update to latest version
 - [x] Prune: Removes every generated manifest for every namespace (ask for confirmation)\
 - [x] New: Creates a new repo inside project
-- [ ] Apply: Performs a kubectl apply to the latest manifest (ask for confirmation)
+- [x] Apply: Performs a kubectl apply to the latest manifest (ask for confirmation,ask to create namespace if doesnt exist)
+- [ ] Deployed: Lists all pods deployed by maniplacer
 
 ## Enhancements
 
