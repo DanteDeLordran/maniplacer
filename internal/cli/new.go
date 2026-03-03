@@ -12,7 +12,7 @@ import (
 var newCmd = &cobra.Command{
 	Use:   "new",
 	Short: "Creates a new repo in project",
-	Long: `The new command creates a fresh repository inside your existing Maniplacer project. 
+	Long: `The new command creates a fresh repository inside your existing Maniplacer project.
 
 A repository represents an isolated environment or service within your project, complete with its own configuration and directories for templates and manifests. This allows you to manage multiple environments (e.g., staging, production) or different services within the same project.
 
@@ -29,46 +29,59 @@ Example usage:
 
 This will set up independent repos 'frontend' and 'backend' inside your project, each with their own templates, manifests, and config.json.`,
 	Args: cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-
+	RunE: func(cmd *cobra.Command, args []string) error {
+		logger := utils.LoggerFromContext(cmd.Context())
 		name := args[0]
 
+		// Validate repo name
+		if err := utils.ValidateRepoName(name); err != nil {
+			return fmt.Errorf("invalid repository name: %w", err)
+		}
+
+		// Check for path traversal
+		if err := utils.ValidateSafePath(name); err != nil {
+			return err
+		}
+
 		if !utils.IsValidProject() {
-			fmt.Printf("Not a valid Maniplacer project\n")
-			os.Exit(1)
+			return fmt.Errorf("current directory is not a valid Maniplacer project")
 		}
 
 		currentPath, err := os.Getwd()
 		if err != nil {
-			fmt.Printf("Could not get current dir due to %s\n", err)
-			os.Exit(1)
+			return fmt.Errorf("could not get current directory: %w", err)
 		}
 
 		repoPath := filepath.Join(currentPath, name)
 
-		if err = os.MkdirAll(repoPath, 0744); err != nil {
-			fmt.Printf("Could not create %s repo %s\n", name, err)
-			os.Exit(1)
+		// Check if repo already exists
+		if _, err := os.Stat(repoPath); err == nil {
+			return fmt.Errorf("repository '%s' already exists", name)
+		}
+
+		if err = os.MkdirAll(repoPath, utils.DirPermission); err != nil {
+			return fmt.Errorf("could not create %s repo: %w", name, err)
 		}
 
 		dirs := []string{"", "manifests", "templates"}
 
 		for _, dir := range dirs {
-			if err = os.MkdirAll(filepath.Join(repoPath, dir), 0744); err != nil {
-				fmt.Printf("Could not create %s repo %s\n", name, err)
-				os.Exit(1)
+			if err = os.MkdirAll(filepath.Join(repoPath, dir), utils.DirPermission); err != nil {
+				return fmt.Errorf("could not create %s repo: %w", name, err)
 			}
 		}
 
-		if f, err := os.Create(filepath.Join(repoPath, "config.json")); err != nil {
-			fmt.Printf("failed to create config file: %s", err)
-			os.Exit(1)
+		configPath := filepath.Join(repoPath, "config.json")
+		if f, err := os.Create(configPath); err != nil {
+			return fmt.Errorf("failed to create config file: %w", err)
 		} else {
 			defer f.Close()
 		}
 
-		fmt.Printf("Successfuly created repo %s inside your project\n", name)
+		logger.Info("repository created successfully", "name", name, "path", repoPath)
+		fmt.Printf("Successfully created repo '%s' inside your project\n", name)
 
+		return nil
 	},
 }
 

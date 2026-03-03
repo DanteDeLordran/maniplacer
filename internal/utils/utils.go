@@ -26,11 +26,11 @@ func CreateManiplacerProject(path string) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	return os.WriteFile(filepath.Join(path, ".maniplacer"), data, 0644)
+	return os.WriteFile(filepath.Join(path, ManiplacerMarker), data, FilePermission)
 }
 
 func IsValidProject() bool {
-	data, err := os.ReadFile(".maniplacer")
+	data, err := os.ReadFile(ManiplacerMarker)
 	if err != nil {
 		return false
 	}

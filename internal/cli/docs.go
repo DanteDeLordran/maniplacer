@@ -4,19 +4,20 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/dantedelordran/maniplacer/internal/utils"
 	"github.com/spf13/cobra"
 )
 
 var docsCmd = &cobra.Command{
 	Use:   "docs",
 	Short: "Documentation and examples for Maniplacer",
-	Long: `The docs command launches a lightweight local web server that serves Maniplacer’s documentation and template examples. 
+	Long: `The docs command launches a lightweight local web server that serves Maniplacer's documentation and template examples.
 
-By default, the server runs on port 8000, but you can override this with the --port (or -p) flag. 
+By default, the server runs on port 8000, but you can override this with the --port (or -p) flag.
 Once started, the documentation is available at http://localhost:<port>/docs, where you can explore built-in functions, templating syntax, and practical usage examples.
 
-This feature is useful when you want quick access to examples without leaving your terminal environment or searching external docs. 
-It provides live, interactive reference material for customizing Kubernetes component manifests with Maniplacer’s template engine.
+This feature is useful when you want quick access to examples without leaving your terminal environment or searching external docs.
+It provides live, interactive reference material for customizing Kubernetes component manifests with Maniplacer's template engine.
 
 Example usage:
   maniplacer docs -p 9000
@@ -24,12 +25,14 @@ Example usage:
 This will start the documentation server on port 9000, and you can access it at:
   http://localhost:9000/docs`,
 	Args: cobra.MaximumNArgs(0),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		port, err := cmd.Flags().GetString("port")
 		if err != nil {
-			fmt.Printf("Could not parse port due to %s, using default...\n", err)
-			port = "8080"
+			return fmt.Errorf("could not parse port flag, using default: %w", err)
 		}
+
+		logger := utils.LoggerFromContext(cmd.Context())
+		logger.Info("starting documentation server", "port", port, "url", fmt.Sprintf("http://localhost:%s/docs", port))
 
 		fmt.Printf("Documentation server available in: http://localhost:%s/docs\n", port)
 
@@ -39,14 +42,17 @@ This will start the documentation server on port 9000, and you can access it at:
 			w.Write([]byte(page))
 		})
 
-		http.ListenAndServe(fmt.Sprintf(":%s", port), mux)
+		if err := http.ListenAndServe(fmt.Sprintf(":%s", port), mux); err != nil {
+			return fmt.Errorf("failed to start documentation server: %w", err)
+		}
 
+		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(docsCmd)
-	docsCmd.Flags().StringP("port", "p", "8000", "Port for serving docs page")
+	docsCmd.Flags().StringP("port", "p", utils.DefaultPort, "Port for serving docs page")
 }
 
 var page = `
@@ -111,21 +117,21 @@ data:
   <div class="explanation">
     <p><b>Why <code>range</code>?</b></p>
     <p>
-      The <code>range</code> command loops over a collection.  
-      In this case, <code>.secrets</code> is a map of key–value pairs.  
-      Each iteration assigns the map key to <code>$key</code> and the value to <code>$value</code>,  
+      The <code>range</code> command loops over a collection.
+      In this case, <code>.secrets</code> is a map of key–value pairs.
+      Each iteration assigns the map key to <code>$key</code> and the value to <code>$value</code>,
       allowing us to output each secret entry as YAML.
     </p>
 
     <p><b>What does the <code>|</code> operator do?</b></p>
     <p>
-      The pipe operator <code>|</code> passes the output of one function into another, like in Unix shells.  
-      For example:  
-      <code>{{ $value | Base64 | Quote }}</code>  
-      means:  
-      1. Take <code>$value</code>  
-      2. Encode it with <code>Base64</code>  
-      3. Then pass the result into <code>Quote</code> to wrap it in quotes.  
+      The pipe operator <code>|</code> passes the output of one function into another, like in Unix shells.
+      For example:
+      <code>{{ $value | Base64 | Quote }}</code>
+      means:
+      1. Take <code>$value</code>
+      2. Encode it with <code>Base64</code>
+      3. Then pass the result into <code>Quote</code> to wrap it in quotes.
     </p>
   </div>
 
@@ -133,16 +139,16 @@ data:
 
   <h2>⚙️ Built-in Functions</h2>
   <ul>
-    <li><b><code>Base64</code></b> – Encodes a string into Base64.  
+    <li><b><code>Base64</code></b> – Encodes a string into Base64.
       <br><i>Example:</i> <code>{{ "hello" | Base64 }}</code> → <code>aGVsbG8=</code></li>
 
-    <li><b><code>ToUpper</code></b> – Converts text to uppercase.  
+    <li><b><code>ToUpper</code></b> – Converts text to uppercase.
       <br><i>Example:</i> <code>{{ "maniplacer" | ToUpper }}</code> → <code>MANIPLACER</code></li>
 
-    <li><b><code>ToLower</code></b> – Converts text to lowercase.  
+    <li><b><code>ToLower</code></b> – Converts text to lowercase.
       <br><i>Example:</i> <code>{{ "KUBERNETES" | ToLower }}</code> → <code>kubernetes</code></li>
 
-    <li><b><code>Quote</code></b> – Wraps text in quotes.  
+    <li><b><code>Quote</code></b> – Wraps text in quotes.
       <br><i>Example:</i> <code>{{ "world" | Quote }}</code> → <code>"world"</code></li>
   </ul>
 

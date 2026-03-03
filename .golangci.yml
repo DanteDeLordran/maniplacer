@@ -1,0 +1,101 @@
+run:
+  timeout: 5m
+  tests: true
+
+output:
+  formats:
+    - format: colored-line-number
+
+linters:
+  enable:
+    - errcheck
+    - goconst
+    - gocritic
+    - gofmt
+    - goimports
+    - gosimple
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - prealloc
+    - staticcheck
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+  disable: []
+
+linters-settings:
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: github.com/dantedelordran/maniplacer
+  gocritic:
+    enabled-checks:
+      - appendCombine
+      - argOrder
+      - assignOp
+      - badCond
+      - boolExprSimplify
+      - builtinShadow
+      - captLocal
+      - caseOrder
+      - codegenComment
+      - commentFormatting
+      - commentedOutCode
+      - commentedOutImport
+      - defaultCaseOrder
+      - deprecatedComment
+      - docStub
+      - dupArg
+      - dupBranchBody
+      - dupCase
+      - dupSubExpr
+      - elseif
+      - emptyFallthrough
+      - equalFold
+      - flagDeref
+      - flagName
+      - hexLiteral
+      - ifElseChain
+      - importShadow
+      - initClause
+      - mapKey
+      - newDeref
+      - nilValReturn
+      - octalLiteral
+      - offBy1
+      - rangeExprCopy
+      - rangeValCopy
+      - regexpMust
+      - returnAfterHttpError
+      - sloppyLen
+      - stringXbytes
+      - switchTrue
+      - timeExprSimplify
+      - todoCommentWithoutDetail
+      - typeAssertChain
+      - typeSwitchVar
+      - underef
+      - unlabelStmt
+      - unlambda
+      - unnecessaryBlock
+      - unnecessaryDefer
+      - unslice
+      - valSwap
+      - weakCond
+      - wrapperFunc
+  misspell:
+    locale: US
+
+issues:
+  exclude-use-default: false
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gocritic
+        - dupl
+        - funlen
+        - goconst
+  max-same-issues: 50
