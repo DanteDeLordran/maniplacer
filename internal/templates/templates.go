@@ -47,8 +47,8 @@ func (t Template) HPA() []byte {
 }
 
 //go:embed files/hcpolicy.tmpl
-var hcPolocyTemplate []byte
+var hcPolicyTemplate []byte
 
-func (t Template) HcPolicy() []byte {
-	return hcPolocyTemplate
+func (t Template) HCPolicy() []byte {
+	return hcPolicyTemplate
 }

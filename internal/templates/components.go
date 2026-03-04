@@ -21,5 +21,5 @@ var TemplateRegistry = map[string][]byte{
 	string(secret):     secretTemplate,
 	string(configmap):  configMapTemplate,
 	string(hpa):        hpaTemplate,
-	string(hcpolicy):   hcPolocyTemplate,
+	string(hcpolicy):   hcPolicyTemplate,
 }
