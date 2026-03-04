@@ -38,10 +38,10 @@ After initialization, you can:
 - Manage multiple repos inside the same project for different environments or services.`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		logger := utils.LoggerFromContext(cmd.Context())
 
 		if utils.IsValidProject() {
-			fmt.Printf("Can not init a project since project already exists in current dir\n")
-			os.Exit(1)
+			return fmt.Errorf("current directory is already a valid Maniplacer project")
 		}
 
 		name := ""
@@ -50,62 +50,67 @@ After initialization, you can:
 		}
 
 		path, err := os.Getwd()
-
 		if err != nil {
-			fmt.Println("Could not get current dir, trying using $HOME")
+			logger.Debug("could not get current directory, trying $HOME", "error", err)
 			path, err = os.UserHomeDir()
 			if err != nil {
-				return fmt.Errorf("could not use current dir nor $HOME due to: %w", err)
+				return fmt.Errorf("could not use current dir nor $HOME: %w", err)
 			}
 		}
 
 		if name == "" {
-
 			confirm := utils.ConfirmMessage("No name given for project, do you want to use current dir?")
-			if confirm {
-				fmt.Println("Creating project on current dir...")
-			} else {
-				fmt.Printf("No project will be created :P\n")
-				os.Exit(1)
+			if !confirm {
+				fmt.Println("No project will be created")
+				os.Exit(0)
 			}
-
+			logger.Info("creating project in current directory")
+		} else {
+			// Validate project name
+			if err := utils.ValidateProjectName(name); err != nil {
+				return fmt.Errorf("invalid project name: %w", err)
+			}
+			logger.Info("creating project", "name", name)
 		}
 
 		path = filepath.Join(path, name)
 
-		if err := os.MkdirAll(path, 0744); err != nil {
-			return fmt.Errorf("failed to create directory %w", err)
+		if err := os.MkdirAll(path, utils.DirPermission); err != nil {
+			return fmt.Errorf("failed to create directory: %w", err)
 		}
 
-		err = utils.CreateManiplacerProject(path)
-		if err != nil {
-			fmt.Printf("Error creating Maniplacer project file due to %s", err)
+		if err := utils.CreateManiplacerProject(path); err != nil {
+			return fmt.Errorf("error creating Maniplacer project: %w", err)
 		}
 
-		fmt.Println("Project initialized successfully.")
+		logger.Info("project initialized successfully")
 
 		confirm := utils.ConfirmMessage("Would you like to init a new repo inside your project? (You can create one later with maniplacer new <name>)")
 		if confirm {
-			name := getRepoName()
+			repoName := getRepoName()
+
+			// Validate repo name
+			if err := utils.ValidateRepoName(repoName); err != nil {
+				return fmt.Errorf("invalid repository name: %w", err)
+			}
 
 			dirs := []string{"", "templates", "manifests"}
 
 			for _, dir := range dirs {
-				if err := os.MkdirAll(filepath.Join(path, name, dir), 0744); err != nil {
-					return fmt.Errorf("failed to create directory %w", err)
+				if err := os.MkdirAll(filepath.Join(path, repoName, dir), utils.DirPermission); err != nil {
+					return fmt.Errorf("failed to create directory: %w", err)
 				}
 			}
 
-			if f, err := os.Create(filepath.Join(path, name, "config.json")); err != nil {
+			if f, err := os.Create(filepath.Join(path, repoName, "config.json")); err != nil {
 				return fmt.Errorf("failed to create config file: %w", err)
 			} else {
 				defer f.Close()
 			}
 
-			fmt.Printf("Successfully created %s repo\n", name)
-
+			logger.Info("repository created successfully", "name", repoName)
 		} else {
-			fmt.Println("Skipping repo init")
+			logger.Info("skipping repository initialization")
 		}
 
 		fmt.Printf("Run 'cd %s'\n", path)

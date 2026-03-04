@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"time"
 
 	"github.com/dantedelordran/maniplacer/internal/utils"
 	"github.com/spf13/cobra"
@@ -15,10 +17,10 @@ import (
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "A brief description of your command",
+	Short: "Updates Maniplacer to the latest version",
 	Long: `Checks GitHub for the latest release of Maniplacer and updates the local binary if a newer version is available.
 
-By default, the command will ask for confirmation before updating.  
+By default, the command will ask for confirmation before updating.
 You can skip confirmation with the --force flag.
 
 The update process:
@@ -31,44 +33,50 @@ The update process:
 Example:
   maniplacer update
   maniplacer update --force`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		logger := utils.LoggerFromContext(cmd.Context())
 
 		force, err := cmd.Flags().GetBool("force")
 		if err != nil {
-			fmt.Printf("Could not parse force flag, using default value %s\n", err)
+			logger.Debug("could not parse force flag, using default", "error", err)
 			force = false
 		}
 
-		version, err := getLatestVersion()
+		ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+		defer cancel()
+
+		version, err := getLatestVersion(ctx)
 		if err != nil {
-			fmt.Println("Could not get latest version due to:", err)
-			os.Exit(1)
+			return fmt.Errorf("could not get latest version: %w", err)
 		}
 
 		if version == utils.Version {
 			fmt.Println("No new version available")
-			os.Exit(1)
-		} else {
-			fmt.Println("New version available:", version)
+			return nil
 		}
+
+		logger.Info("new version available", "current", utils.Version, "latest", version)
+		fmt.Println("New version available:", version)
 
 		if !force {
 			choice := utils.ConfirmMessage("Are you sure you want to update?")
 
 			if !choice {
 				fmt.Printf("Not updating, staying in version %s\n", utils.Version)
-				os.Exit(1)
+				return nil
 			}
-
 		}
+
 		fmt.Printf("Updating from %s to %s...\n", utils.Version, version)
-		if err := downloadAndReplace(version); err != nil {
-			fmt.Printf("Update failed: %v\n", err)
-			os.Exit(1)
+
+		if err := downloadAndReplace(ctx, version); err != nil {
+			return fmt.Errorf("update failed: %w", err)
 		}
 
+		logger.Info("update successful", "version", version)
 		fmt.Println("Successfully updated to", version)
 
+		return nil
 	},
 }
 
@@ -85,8 +93,21 @@ type GitHubRelease struct {
 	} `json:"assets"`
 }
 
-func getLatestVersion() (string, error) {
-	res, err := http.Get("https://api.github.com/repos/dantedelordran/maniplacer/releases/latest")
+func getLatestVersion(ctx context.Context) (string, error) {
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/dantedelordran/maniplacer/releases/latest", nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	// Add User-Agent header (required by GitHub API)
+	req.Header.Set("User-Agent", "maniplacer/"+utils.Version)
+
+	res, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to check releases: %w", err)
 	}
@@ -109,7 +130,7 @@ func getLatestVersion() (string, error) {
 	return version, nil
 }
 
-func downloadAndReplace(version string) error {
+func downloadAndReplace(ctx context.Context, version string) error {
 	execPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -119,13 +140,25 @@ func downloadAndReplace(version string) error {
 	arch := runtime.GOARCH
 	binaryName := fmt.Sprintf("maniplacer-%s-%s", goos, arch)
 
-	downloadURL, err := getDownloadURL(version, binaryName)
+	downloadURL, err := getDownloadURL(ctx, version, binaryName)
 	if err != nil {
 		return fmt.Errorf("failed to get download URL: %w", err)
 	}
 
+	utils.Logger().Info("downloading binary", "url", downloadURL)
 	fmt.Printf("Downloading %s...\n", downloadURL)
-	res, err := http.Get(downloadURL)
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 5 * time.Minute, // Longer timeout for downloads
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create download request: %w", err)
+	}
+
+	res, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to download binary: %w", err)
 	}
@@ -184,9 +217,6 @@ echo "Cleaning up..."
 rm -f "%[2]s" "%[3]s" "%[4]s"
 
 echo "Update complete."
-
-# Optional: Uncomment to restart
-# exec "%[1]s" "$@"
 `, execPath, backupPath, updatePath, scriptPath)
 
 	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
@@ -197,16 +227,33 @@ echo "Update complete."
 	cmd := exec.Command("/bin/bash", scriptPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Start()
+
+	// Start the script and exit immediately
+	if err := cmd.Start(); err != nil {
+		os.Remove(scriptPath)
+		return fmt.Errorf("failed to start update script: %w", err)
+	}
 
 	fmt.Println("Update will complete after the program exits...")
 	os.Exit(0)
 	return nil
 }
 
-func getDownloadURL(version, binaryName string) (string, error) {
+func getDownloadURL(ctx context.Context, version, binaryName string) (string, error) {
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
 	url := fmt.Sprintf("https://api.github.com/repos/dantedelordran/maniplacer/releases/tags/%s", version)
-	res, err := http.Get(url)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "maniplacer/"+utils.Version)
+
+	res, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to get release info: %w", err)
 	}

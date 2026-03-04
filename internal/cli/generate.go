@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -179,6 +180,7 @@ func AutoDetectConfigFormat(filePath string) (ConfigFormat, error) {
 	// If both fail, default to extension-based detection
 	return DetectConfigFormat(filePath), nil
 }
+
 func ValidateConfig(config map[string]any) error {
 	if len(config) == 0 {
 		return fmt.Errorf("configuration file is empty or contains no valid data")
@@ -191,7 +193,7 @@ var generateCmd = &cobra.Command{
 	Short: "Generates the manifest given a config file and at least one template",
 	Long: `The generate command renders Kubernetes manifests by combining your project's templates with values provided in a configuration file.
 
-It scans the 'templates/<namespace>/' directory of your Maniplacer project, applies the values from the configuration file, and writes the rendered manifests into 'manifests/<namespace>/<timestamp>/'. 
+It scans the 'templates/<namespace>/' directory of your Maniplacer project, applies the values from the configuration file, and writes the rendered manifests into 'manifests/<namespace>/<timestamp>/'.
 Each run is timestamped, ensuring outputs from previous runs are preserved instead of being overwritten.
 
 You can customize the input config format with the --format (or -f) flag, select a template namespace with the --namespace (or -n) flag, and specify the target repository with the --repo (or -r) flag.
@@ -209,64 +211,84 @@ Example usage:
   maniplacer generate -f yaml -n production -r myrepo
   maniplacer generate -c /path/to/custom-config.json
   maniplacer generate -c custom.yaml -f yaml
+  maniplacer generate --dry-run
 
 Notes:
 - The current directory must be a valid Maniplacer project (contain a '.maniplacer' file).
 - The specified namespace must exist under the 'templates' directory.
-- Each run creates a unique timestamped output folder for safe, repeatable generation.`,
+- Each run creates a unique timestamped output folder for safe, repeatable generation.
+- Use --dry-run to preview without writing files.`,
 	Args: cobra.MaximumNArgs(0),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
+		logger := utils.LoggerFromContext(cmd.Context())
 
 		if !utils.IsValidProject() {
-			fmt.Printf("Error: Current directory is not a valid Maniplacer project\n")
-			os.Exit(1)
+			return fmt.Errorf("current directory is not a valid Maniplacer project")
 		}
 
 		namespace, err := cmd.Flags().GetString("namespace")
 		if err != nil {
-			fmt.Printf("Warning: Could not parse namespace flag, using default\n")
-			namespace = "default"
+			logger.Debug("could not parse namespace flag, using default", "error", err)
+			namespace = utils.DefaultNamespace
+		}
+
+		// Validate namespace
+		if err := utils.ValidateNamespace(namespace); err != nil {
+			return fmt.Errorf("invalid namespace: %w", err)
 		}
 
 		formatFlag, err := cmd.Flags().GetString("format")
 		if err != nil {
-			fmt.Printf("Warning: Could not parse format flag, using auto-detection\n")
+			logger.Debug("could not parse format flag, using auto-detection", "error", err)
 			formatFlag = ""
 		}
 
 		customConfigPath, err := cmd.Flags().GetString("config")
 		if err != nil {
-			fmt.Printf("Warning: Could not parse config flag\n")
+			logger.Debug("could not parse config flag", "error", err)
 			customConfigPath = ""
+		}
+
+		dryRun, err := cmd.Flags().GetBool("dry-run")
+		if err != nil {
+			logger.Debug("could not parse dry-run flag", "error", err)
+			dryRun = false
 		}
 
 		repo, err := cmd.Flags().GetString("repo")
 		if err != nil {
-			fmt.Printf("Error: Could not get repo flag: %s\n", err)
-			os.Exit(1)
+			return fmt.Errorf("could not get repo flag: %w", err)
+		}
+
+		if repo == "" {
+			return fmt.Errorf("repository name is required (use --repo flag)")
+		}
+
+		// Validate repo name and check for path traversal
+		if err := utils.ValidateRepoName(repo); err != nil {
+			return fmt.Errorf("invalid repository name: %w", err)
+		}
+		if err := utils.ValidateSafePath(repo); err != nil {
+			return err
 		}
 
 		currentDir, err := os.Getwd()
 		if err != nil {
-			fmt.Printf("Error: Could not get current directory: %s\n", err)
-			os.Exit(1)
+			return fmt.Errorf("could not get current directory: %w", err)
 		}
 
 		templateDir := filepath.Join(currentDir, repo, "templates", namespace)
 		if _, err := os.Stat(templateDir); err != nil {
-			fmt.Printf("Error: Template directory '%s' not found: %s\n", templateDir, err)
-			os.Exit(1)
+			return fmt.Errorf("template directory '%s' not found: %w", templateDir, err)
 		}
 
 		files, err := os.ReadDir(templateDir)
 		if err != nil {
-			fmt.Printf("Error: Could not read template directory: %s\n", err)
-			os.Exit(1)
+			return fmt.Errorf("could not read template directory: %w", err)
 		}
 
 		if len(files) == 0 {
-			fmt.Printf("Error: Template namespace '%s' is empty\n", namespace)
-			os.Exit(1)
+			return fmt.Errorf("template namespace '%s' is empty", namespace)
 		}
 
 		// Find and load configuration file
@@ -279,9 +301,13 @@ Notes:
 				customConfigPath = filepath.Join(currentDir, repo, customConfigPath)
 			}
 
+			// Validate custom config path for path traversal
+			if err := utils.ValidateSafePath(customConfigPath); err != nil {
+				return err
+			}
+
 			if _, err := os.Stat(customConfigPath); err != nil {
-				fmt.Printf("Error: Custom config file not found: %s\n", customConfigPath)
-				os.Exit(1)
+				return fmt.Errorf("custom config file not found: %s", customConfigPath)
 			}
 
 			configPath = customConfigPath
@@ -295,15 +321,13 @@ Notes:
 				case FormatJSON, FormatYAML, FormatYML:
 					// Valid format
 				default:
-					fmt.Printf("Error: Unsupported format '%s'. Supported formats: json, yaml, yml\n", formatFlag)
-					os.Exit(1)
+					return fmt.Errorf("unsupported format '%s'. Supported formats: json, yaml, yml", formatFlag)
 				}
 			} else {
 				// Auto-detect format for custom file
 				detectedFormat, err = AutoDetectConfigFormat(customConfigPath)
 				if err != nil {
-					fmt.Printf("Error: Could not detect format for custom config file: %s\n", err)
-					os.Exit(1)
+					return fmt.Errorf("could not detect format for custom config file: %w", err)
 				}
 			}
 		} else {
@@ -316,18 +340,17 @@ Notes:
 				case FormatJSON, FormatYAML, FormatYML:
 					// Valid format
 				default:
-					fmt.Printf("Error: Unsupported format '%s'. Supported formats: json, yaml, yml\n", formatFlag)
-					os.Exit(1)
+					return fmt.Errorf("unsupported format '%s'. Supported formats: json, yaml, yml", formatFlag)
 				}
 			}
 
 			configPath, detectedFormat, err = FindConfigFile(currentDir, repo, preferredFormat)
 			if err != nil {
-				fmt.Printf("Error: %s\n", err)
-				os.Exit(1)
+				return err
 			}
 		}
 
+		logger.Info("using config file", "format", strings.ToUpper(string(detectedFormat)), "path", configPath)
 		fmt.Printf("Using %s config file: %s\n", strings.ToUpper(string(detectedFormat)), configPath)
 
 		loader := &ConfigLoader{
@@ -337,27 +360,30 @@ Notes:
 
 		config, err := loader.LoadConfig()
 		if err != nil {
-			fmt.Printf("Error: %s\n", err)
-			os.Exit(1)
+			return fmt.Errorf("failed to load config: %w", err)
 		}
 
 		if err := ValidateConfig(config); err != nil {
-			fmt.Printf("Error: Configuration validation failed: %s\n", err)
-			os.Exit(1)
+			return fmt.Errorf("configuration validation failed: %w", err)
 		}
 
+		logger.Info("configuration loaded successfully", "keys", len(config))
 		fmt.Printf("Successfully loaded configuration with %d top-level keys\n", len(config))
 
 		// Generate output directory with timestamp
 		timestamp := time.Now().Format("2006-01-02_15-04-05")
 		outputDir := filepath.Join(currentDir, repo, "manifests", namespace, timestamp)
 
-		if err := os.MkdirAll(outputDir, 0755); err != nil {
-			fmt.Printf("Error: Could not create output directory '%s': %s\n", outputDir, err)
-			os.Exit(1)
+		if !dryRun {
+			if err := os.MkdirAll(outputDir, utils.DirPermission); err != nil {
+				return fmt.Errorf("could not create output directory '%s': %w", outputDir, err)
+			}
+			logger.Info("output directory created", "path", outputDir)
+			fmt.Printf("Output directory: %s\n", outputDir)
+		} else {
+			logger.Info("dry-run mode enabled, no files will be written")
+			fmt.Printf("Dry-run mode: no files will be written\n")
 		}
-
-		fmt.Printf("Output directory: %s\n", outputDir)
 
 		// Process templates
 		successCount := 0
@@ -370,25 +396,36 @@ Notes:
 
 			templatePath := filepath.Join(templateDir, file.Name())
 
-			if err := processTemplate(templatePath, outputDir, file.Name(), config); err != nil {
+			if err := processTemplate(cmd.Context(), templatePath, outputDir, file.Name(), config, dryRun); err != nil {
+				logger.Warn("failed to process template", "file", file.Name(), "error", err)
 				fmt.Printf("Warning: Failed to process template '%s': %s\n", file.Name(), err)
 				errorCount++
 			} else {
-				fmt.Printf("Generated: %s\n", filepath.Join(outputDir, file.Name()))
+				if dryRun {
+					fmt.Printf("Would generate: %s\n", file.Name())
+				} else {
+					logger.Info("manifest generated", "file", file.Name())
+					fmt.Printf("Generated: %s\n", filepath.Join(outputDir, file.Name()))
+				}
 				successCount++
 			}
 		}
 
+		logger.Info("generation complete", "successful", successCount, "errors", errorCount)
 		fmt.Printf("\nGeneration complete: %d successful, %d errors\n", successCount, errorCount)
 
 		if errorCount > 0 {
-			os.Exit(1)
+			return fmt.Errorf("generation completed with %d errors", errorCount)
 		}
+
+		return nil
 	},
 }
 
 // processTemplate handles the rendering of a single template file
-func processTemplate(templatePath, outputDir, filename string, config map[string]any) error {
+func processTemplate(ctx context.Context, templatePath, outputDir, filename string, config map[string]any, dryRun bool) error {
+	logger := utils.LoggerFromContext(ctx)
+
 	content, err := os.ReadFile(templatePath)
 	if err != nil {
 		return fmt.Errorf("could not read template file: %w", err)
@@ -399,17 +436,33 @@ func processTemplate(templatePath, outputDir, filename string, config map[string
 		return fmt.Errorf("could not parse template: %w", err)
 	}
 
+	if dryRun {
+		// In dry-run mode, just validate the template without writing
+		var output strings.Builder
+		if err := templ.Execute(&output, config); err != nil {
+			return fmt.Errorf("could not execute template: %w", err)
+		}
+		logger.Debug("template validated successfully", "file", filename)
+		return nil
+	}
+
 	outputPath := filepath.Join(outputDir, filename)
 	f, err := os.Create(outputPath)
 	if err != nil {
 		return fmt.Errorf("could not create output file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			logger.Warn("failed to close output file", "file", outputPath, "error", closeErr)
+		}
+	}()
 
 	if err := templ.Execute(f, config); err != nil {
 		// Clean up the partially written file on error
 		f.Close()
-		os.Remove(outputPath)
+		if removeErr := os.Remove(outputPath); removeErr != nil {
+			logger.Warn("failed to remove partial output file", "file", outputPath, "error", removeErr)
+		}
 		return fmt.Errorf("could not execute template: %w", err)
 	}
 
@@ -419,7 +472,8 @@ func processTemplate(templatePath, outputDir, filename string, config map[string
 func init() {
 	rootCmd.AddCommand(generateCmd)
 	generateCmd.Flags().StringP("format", "f", "", "Config file format (json, yaml, yml). If not specified, auto-detects from available files.")
-	generateCmd.Flags().StringP("namespace", "n", "default", "Namespace for template to be generated")
+	generateCmd.Flags().StringP("namespace", "n", utils.DefaultNamespace, "Namespace for template to be generated")
 	generateCmd.Flags().StringP("repo", "r", "", "Repository name")
 	generateCmd.Flags().StringP("config", "c", "", "Custom path to config file (overrides default config file detection)")
+	generateCmd.Flags().Bool("dry-run", false, "Preview generation without writing files")
 }

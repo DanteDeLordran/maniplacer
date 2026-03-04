@@ -20,6 +20,10 @@ Maniplacer helps you manage Kubernetes manifests efficiently by:
 - ⏰ **Timestamped Outputs**: Each generation creates a unique timestamped folder
 - 🧹 **Cleanup Tools**: Prune manifests and remove templates easily
 - 🔄 **Self-updating**: Update to latest version from GitHub releases
+- 🔒 **Security Hardened**: Path traversal protection, input validation, K8s naming conventions
+- 🧪 **Test Coverage**: Comprehensive unit tests for core functionality
+- 🐚 **Shell Completion**: Auto-completion for bash, zsh, fish, powershell
+- 🔍 **Dry-Run Mode**: Preview generation without writing files
 
 ## Installation
 
@@ -33,6 +37,19 @@ curl -fsSL https://raw.github.com/dantedelordran/maniplacer/main/installer.sh | 
 git clone https://github.com/dantedelordran/maniplacer.git
 cd maniplacer
 make build
+```
+
+### Build with Specific Version
+```bash
+VERSION=1.3.15 make build
+# or
+go build -ldflags "-X github.com/dantedelordran/maniplacer/internal/utils.Version=1.3.15" -o dist/maniplacer cmd/main.go
+```
+
+### Docker
+```bash
+docker build -t maniplacer:latest .
+docker run --rm -v $(pwd):/workspace maniplacer:latest version
 ```
 
 ## Quick Start
@@ -66,6 +83,8 @@ maniplacer add deployment service configmap -n production -r myapp
 # - httpRoute     (HTTP routing rules)
 # - secret        (secure storage for sensitive data)
 # - configmap     (configuration key-value pairs)
+# - hpa           (Horizontal Pod Autoscaler)
+# - hcpolicy      (Health Check Policy)
 ```
 
 ### 4. Create Configuration
@@ -96,6 +115,9 @@ maniplacer generate -f yaml -n production -r myapp
 
 # Use custom config file
 maniplacer generate -c custom-config.json -n production -r myapp
+
+# Preview without writing files (Dry-Run)
+maniplacer generate --dry-run -n production -r myapp
 ```
 
 ### 6. List Generated Manifests
@@ -149,7 +171,7 @@ data:
 ### Built-in Functions
 - **`Base64`** - Encode strings to Base64
 - **`ToUpper`** - Convert to uppercase
-- **`ToLower`** - Convert to lowercase  
+- **`ToLower`** - Convert to lowercase
 - **`Quote`** - Wrap in quotes
 
 ### Example Usage
@@ -225,11 +247,15 @@ maniplacer generate -n production -f yaml -r myrepo
 # Use custom config file
 maniplacer generate -c /path/to/config.json -r myrepo
 
+# Preview without writing files
+maniplacer generate --dry-run -r myrepo
+
 # Available options:
 # -n, --namespace   Template namespace (default: "default")
 # -f, --format      Config format: json, yaml, yml (auto-detected if not specified)
 # -r, --repo        Repository name (required)
-# -c, --config      Custom config file path
+# -c, --config      Custom path to config file (overrides default config file detection)
+# --dry-run         Preview generation without writing files
 ```
 
 ### `maniplacer list`
@@ -273,7 +299,7 @@ maniplacer prune -r myrepo
 maniplacer prune -n staging -r myapp
 
 # Available options:
-# -n, --namespace   Target namespace (default: "default")  
+# -n, --namespace   Target namespace (default: "default")
 # -r, --repo        Repository name (required)
 ```
 
@@ -312,6 +338,30 @@ maniplacer docs -p 9000
 ```
 
 Access documentation at: `http://localhost:8000/docs`
+
+### `maniplacer version`
+Display the current version of Maniplacer.
+
+```bash
+maniplacer version
+```
+
+### `maniplacer completion`
+Generate shell completion scripts for bash, zsh, fish, or powershell.
+
+```bash
+# Bash
+maniplacer completion bash > /etc/bash_completion.d/maniplacer
+
+# Zsh
+maniplacer completion zsh > "${fpath[1]}/_maniplacer"
+
+# Fish
+maniplacer completion fish > ~/.config/fish/completions/maniplacer.fish
+
+# PowerShell
+maniplacer completion powershell > $PROFILE
+```
 
 ## Configuration Formats
 
@@ -371,7 +421,7 @@ Organize templates and manifests by environment:
 maniplacer add deployment service -n development -r myapp
 maniplacer generate -n development -r myapp
 
-# Staging environment  
+# Staging environment
 maniplacer add deployment service -n staging -r myapp
 maniplacer generate -n staging -r myapp
 
@@ -446,6 +496,76 @@ maniplacer list -n production -r frontend
 maniplacer prune -n production -r frontend
 ```
 
+### Debug Mode
+Enable debug logging for troubleshooting:
+
+```bash
+MANIPLACER_DEBUG=true maniplacer generate -r myapp
+```
+
+## Development
+
+### Build from Source
+
+```bash
+# Clone repository
+git clone https://github.com/dantedelordran/maniplacer.git
+cd maniplacer
+
+# Build with automatic version from git
+make build
+
+# Build with specific version
+VERSION=1.3.15 make build
+
+# Build for all platforms
+make build-all
+
+# Create release archive
+make release
+```
+
+### Run Tests
+
+```bash
+# Run all tests
+make test
+
+# Run with coverage
+go test ./... -cover
+
+# Run specific package tests
+go test ./internal/utils/...
+go test ./internal/templates/...
+go test ./internal/cli/...
+```
+
+### Run Linters
+
+```bash
+# Run all linters
+make lint
+
+# Or directly
+golangci-lint run
+```
+
+### Project Structure
+
+```
+maniplacer/
+├── cmd/                      # Application entry point
+│   └── main.go
+├── internal/                 # Internal packages
+│   ├── cli/                  # CLI commands
+│   ├── templates/            # Template definitions and functions
+│   └── utils/                # Utility functions and validation
+├── dist/                     # Build artifacts
+├── Makefile                  # Build automation
+├── go.mod                    # Go module definition
+└── README.md                 # This file
+```
+
 ## Best Practices
 
 1. **Use descriptive repository names** - Name repos based on service or component (e.g., `frontend`, `api`, `database`)
@@ -454,6 +574,8 @@ maniplacer prune -n production -r frontend
 4. **Test templates** - Generate manifests in development before deploying to production
 5. **Leverage template helpers** - Use built-in functions for common transformations
 6. **Clean regularly** - Use `prune` to remove old manifests and `remove` to clean up unused templates
+7. **Use dry-run first** - Preview changes with `--dry-run` before generating files
+8. **Validate names** - Repository and namespace names follow Kubernetes naming conventions
 
 ## Troubleshooting
 
@@ -471,15 +593,39 @@ maniplacer prune -n production -r frontend
 - Add templates using `maniplacer add` before generating
 - Verify the namespace and repository names are correct
 
+**"Invalid repository name"**
+- Repository names must follow Kubernetes naming conventions
+- Use lowercase alphanumeric characters and hyphens only
+- Must start and end with alphanumeric character
+- Example: `my-app` ✅, `My_App` ❌
+
+**"Invalid namespace"**
+- Namespace names follow Kubernetes DNS-1123 label standards
+- Cannot use reserved namespaces: `kube-system`, `kube-public`, `kube-node-lease`
+- Example: `production` ✅, `KUBE-SYSTEM` ❌
+
+### Enable Debug Logging
+
+```bash
+MANIPLACER_DEBUG=true maniplacer <command>
+```
+
+This shows detailed logs for troubleshooting.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## Support
+### Development Workflow
 
-- 📖 **Documentation**: Run `maniplacer docs` for interactive examples
-- 🐛 **Issues**: Report bugs on [GitHub Issues](https://github.com/dantedelordran/maniplacer/issues)
-- 💬 **Discussions**: Join conversations in [GitHub Discussions](https://github.com/dantedelordran/maniplacer/discussions)
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Run tests (`make test`)
+5. Run linters (`make lint`)
+6. Commit your changes (`git commit -m 'Add amazing feature'`)
+7. Push to the branch (`git push origin feature/amazing-feature`)
+8. Open a Pull Request
 
 ## License
 
