@@ -10,20 +10,30 @@ Maniplacer helps you manage Kubernetes manifests efficiently by:
 - **Generating** production-ready manifests from configuration files
 - **Organizing** resources by namespace and repository structure
 
+## Project Status
+
+- **Latest tagged release**: `1.3.15`
+- **Active development branch reviewed**: `develop`
+- **Runtime and tooling**: Go `1.25`, Cobra CLI, Kubernetes `client-go`
+- **Implemented commands**: `init`, `new`, `add`, `remove`, `generate`, `list`, `prune`, `docs`, `update`, `version`, `completion`, and `apply`
+- **In progress**: `deployed` is registered but currently a placeholder
+- **Planned**: Config-file naming convention for automatic namespace apply
+
 ## Features
 
-- 🚀 **Project Management**: Initialize projects and create repositories with `init` and `new`
-- 🔧 **Template Management**: Add, remove, and list component templates
-- 📁 **Smart Generation**: Generate manifests with intelligent config detection
-- 🔄 **Multi-format Support**: Works with JSON and YAML configuration files
-- 📚 **Built-in Documentation**: Local documentation server with examples
-- ⏰ **Timestamped Outputs**: Each generation creates a unique timestamped folder
-- 🧹 **Cleanup Tools**: Prune manifests and remove templates easily
-- 🔄 **Self-updating**: Update to latest version from GitHub releases
-- 🔒 **Security Hardened**: Path traversal protection, input validation, K8s naming conventions
-- 🧪 **Test Coverage**: Comprehensive unit tests for core functionality
-- 🐚 **Shell Completion**: Auto-completion for bash, zsh, fish, powershell
-- 🔍 **Dry-Run Mode**: Preview generation without writing files
+- **Project Management**: Initialize projects and create repositories with `init` and `new`
+- **Template Management**: Add and remove component templates
+- **Smart Generation**: Generate manifests with intelligent config detection
+- **Cluster Apply**: Apply the latest generated manifests to a Kubernetes cluster
+- **Multi-format Support**: Works with JSON and YAML configuration files
+- **Built-in Documentation**: Local documentation server with examples
+- **Timestamped Outputs**: Each generation creates a unique timestamped folder
+- **Cleanup Tools**: Prune manifests and remove templates easily
+- **Self-updating**: Update to latest version from GitHub releases
+- **Security Hardened**: Path traversal protection, input validation, K8s naming conventions
+- **Test Coverage**: Comprehensive unit tests for core functionality
+- **Shell Completion**: Auto-completion for bash, zsh, fish, powershell
+- **Dry-Run Mode**: Preview generation without writing files
 
 ## Installation
 
@@ -61,7 +71,7 @@ docker run --rm -v $(pwd):/workspace maniplacer:latest version
 maniplacer init
 
 # Or create a new project with a specific name
-maniplacer init --name my-k8s-project
+maniplacer init my-k8s-project
 ```
 
 ### 2. Create a Repository
@@ -80,7 +90,7 @@ maniplacer add deployment service configmap -n production -r myapp
 # Available components:
 # - deployment    (workloads with containers and replicas)
 # - service       (network-accessible services)
-# - httpRoute     (HTTP routing rules)
+# - httproute     (HTTP routing rules)
 # - secret        (secure storage for sensitive data)
 # - configmap     (configuration key-value pairs)
 # - hpa           (Horizontal Pod Autoscaler)
@@ -120,7 +130,14 @@ maniplacer generate -c custom-config.json -n production -r myapp
 maniplacer generate --dry-run -n production -r myapp
 ```
 
-### 6. List Generated Manifests
+### 6. Apply Latest Generated Manifests
+
+```bash
+# Apply latest generated manifests to the cluster configured by ~/.kube/config
+maniplacer apply myapp -n production
+```
+
+### 7. List Generated Manifests
 
 ```bash
 # List all manifests in a namespace
@@ -194,10 +211,10 @@ Bootstrap a new Maniplacer project with the required folder structure.
 maniplacer init
 
 # Create new project with specific name
-maniplacer init --name my-k8s-project
+maniplacer init my-k8s-project
 
-# Available options:
-# -n, --name        Project name (creates new directory if specified)
+# Arguments:
+# [project-name]    Optional project directory name
 ```
 
 During initialization:
@@ -257,6 +274,22 @@ maniplacer generate --dry-run -r myrepo
 # -c, --config      Custom path to config file (overrides default config file detection)
 # --dry-run         Preview generation without writing files
 ```
+
+### `maniplacer apply`
+Apply the latest generated manifest version for a repository to the Kubernetes cluster configured by `~/.kube/config`.
+
+```bash
+# Apply latest generated manifests in the default namespace
+maniplacer apply myrepo
+
+# Apply latest generated manifests in a specific namespace
+maniplacer apply myrepo -n production
+
+# Available options:
+# -n, --namespace   Namespace to apply resources (default: "default")
+```
+
+The command reads from `<repo>/manifests/<namespace>/<latest-timestamp>/`, prompts before creating a missing namespace, and uses server-side apply with field manager `maniplacer`.
 
 ### `maniplacer list`
 Display all generated manifests in a specific namespace and repository.
@@ -362,6 +395,9 @@ maniplacer completion fish > ~/.config/fish/completions/maniplacer.fish
 # PowerShell
 maniplacer completion powershell > $PROFILE
 ```
+
+### `maniplacer deployed`
+Registered as a future status command. The current implementation is a placeholder and does not list pods yet.
 
 ## Configuration Formats
 
@@ -471,7 +507,7 @@ spec:
 #### Complete Development Workflow
 ```bash
 # 1. Initialize project
-maniplacer init --name my-microservice
+maniplacer init my-microservice
 cd my-microservice
 
 # 2. Create repositories for different services
@@ -547,7 +583,10 @@ go test ./internal/cli/...
 make lint
 
 # Or directly
-golangci-lint run
+go vet ./...
+
+# Optional, if installed
+staticcheck ./...
 ```
 
 ### Project Structure
@@ -597,12 +636,12 @@ maniplacer/
 - Repository names must follow Kubernetes naming conventions
 - Use lowercase alphanumeric characters and hyphens only
 - Must start and end with alphanumeric character
-- Example: `my-app` ✅, `My_App` ❌
+- Example: `my-app` (valid), `My_App` (invalid)
 
 **"Invalid namespace"**
 - Namespace names follow Kubernetes DNS-1123 label standards
 - Cannot use reserved namespaces: `kube-system`, `kube-public`, `kube-node-lease`
-- Example: `production` ✅, `KUBE-SYSTEM` ❌
+- Example: `production` (valid), `KUBE-SYSTEM` (invalid)
 
 ### Enable Debug Logging
 
@@ -633,4 +672,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-Made with ❤️ for Kubernetes developers who love clean, organized manifest management.
+Built for Kubernetes developers who love clean, organized manifest management.
