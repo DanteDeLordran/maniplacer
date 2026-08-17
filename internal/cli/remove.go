@@ -34,48 +34,15 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		logger := utils.LoggerFromContext(cmd.Context())
 
-		if !utils.IsValidProject() {
-			return fmt.Errorf("current directory is not a valid Maniplacer project")
-		}
-
-		namespace, err := cmd.Flags().GetString("namespace")
+		target, err := resolveTarget(cmd)
 		if err != nil {
-			logger.Debug("could not parse namespace flag, using default", "error", err)
-			namespace = utils.DefaultNamespace
-		}
-
-		// Validate namespace
-		if err := utils.ValidateNamespace(namespace); err != nil {
-			return fmt.Errorf("invalid namespace: %w", err)
-		}
-
-		repo, err := cmd.Flags().GetString("repo")
-		if err != nil {
-			return fmt.Errorf("could not get repo flag: %w", err)
-		}
-
-		if repo == "" {
-			return fmt.Errorf("repository name is required (use --repo flag)")
-		}
-
-		// Validate repo name and check for path traversal
-		if err := utils.ValidateRepoName(repo); err != nil {
-			return fmt.Errorf("invalid repository name: %w", err)
-		}
-		if err := utils.ValidateSafePath(repo); err != nil {
 			return err
 		}
 
-		currentDir, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("could not get current directory: %w", err)
-		}
+		templatesPath := target.TemplatesDir()
 
-		templatesPath := filepath.Join(currentDir, repo, "templates", namespace)
-
-		_, err = os.Stat(templatesPath)
-		if err != nil {
-			return fmt.Errorf("namespace '%s' does not exist", namespace)
+		if _, err := os.Stat(templatesPath); err != nil {
+			return fmt.Errorf("namespace '%s' does not exist", target.Namespace)
 		}
 
 		for _, comp := range args {
@@ -83,13 +50,10 @@ Examples:
 
 			file, err := os.Stat(templatePath)
 			if err != nil {
-				logger.Warn("component does not exist, skipping", "component", comp, "namespace", namespace)
-				fmt.Printf("Component '%s' does not exist in templates dir with %s namespace, skipping...\n", comp, namespace)
+				logger.Debug("component does not exist, skipping", "component", comp, "namespace", target.Namespace)
+				fmt.Printf("Component '%s' does not exist in templates dir with %s namespace, skipping...\n", comp, target.Namespace)
 				continue
 			}
-
-			logger.Info("removing component", "component", comp, "namespace", namespace)
-			fmt.Printf("Removing %s...\n", file.Name())
 
 			if err = os.Remove(templatePath); err != nil {
 				logger.Warn("could not remove file", "file", file.Name(), "error", err)
@@ -97,8 +61,7 @@ Examples:
 				continue
 			}
 
-			logger.Info("component removed", "component", comp, "namespace", namespace)
-			fmt.Printf("Successfully removed %s from %s namespace\n", file.Name(), namespace)
+			fmt.Printf("Successfully removed %s from %s namespace\n", file.Name(), target.Namespace)
 		}
 
 		return nil
@@ -107,6 +70,5 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(removeCmd)
-	removeCmd.Flags().StringP("namespace", "n", utils.DefaultNamespace, "Namespace for removing templates")
-	removeCmd.Flags().StringP("repo", "r", "", "Repo name")
+	addRepoNamespaceFlags(removeCmd, "Namespace for removing templates")
 }

@@ -267,13 +267,23 @@ maniplacer generate -c /path/to/config.json -r myrepo
 # Preview without writing files
 maniplacer generate --dry-run -r myrepo
 
+# Allow templates to reference keys that are absent from the config
+maniplacer generate --strict=false -r myrepo
+
 # Available options:
 # -n, --namespace   Template namespace (default: "default")
 # -f, --format      Config format: json, yaml, yml (auto-detected if not specified)
 # -r, --repo        Repository name (required)
 # -c, --config      Custom path to config file (overrides default config file detection)
 # --dry-run         Preview generation without writing files
+# --strict          Fail on missing config keys and invalid YAML output (default: true)
 ```
+
+By default generation is **strict**: a template that references a key missing from
+the config file is an error, and rendered output must parse as valid YAML. This
+prevents the literal string `<no value>` from being written into a manifest and
+later applied to a cluster. Pass `--strict=false` for the previous lenient
+behaviour.
 
 ### `maniplacer apply`
 Apply the latest generated manifest version for a repository to the Kubernetes cluster configured by `~/.kube/config`.

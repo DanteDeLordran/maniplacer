@@ -71,14 +71,11 @@ This will set up independent repos 'frontend' and 'backend' inside your project,
 			}
 		}
 
-		configPath := filepath.Join(repoPath, "config.json")
-		if f, err := os.Create(configPath); err != nil {
-			return fmt.Errorf("failed to create config file: %w", err)
-		} else {
-			defer f.Close()
+		if err := utils.CreateConfigFile(repoPath, utils.FormatJSON); err != nil {
+			return err
 		}
 
-		logger.Info("repository created successfully", "name", name, "path", repoPath)
+		logger.Debug("repository created successfully", "name", name, "path", repoPath)
 		fmt.Printf("Successfully created repo '%s' inside your project\n", name)
 
 		return nil

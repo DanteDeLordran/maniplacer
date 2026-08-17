@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/discovery/cached/memory"
@@ -40,14 +41,9 @@ var applyCmd = &cobra.Command{
 
 		namespace, err := cmd.Flags().GetString("namespace")
 		if err != nil {
-			fmt.Printf("Could not get namespace flag, using 'defalt'\n")
-			namespace = "default"
+			fmt.Printf("Could not get namespace flag, using '%s'\n", utils.DefaultNamespace)
+			namespace = utils.DefaultNamespace
 		}
-
-		//pick, err := cmd.Flags().GetString("pick")
-		//if err != nil {
-		//	fmt.Printf("Using latest manifest...\n")
-		//}
 
 		if err := initKubeClients(); err != nil {
 			fmt.Printf("Error initializing Kubernetes client: %s\n", err)
@@ -62,15 +58,17 @@ var applyCmd = &cobra.Command{
 
 		projectPath := filepath.Join(currentPath, repoName, "manifests", namespace)
 
-		createResources(projectPath, namespace)
+		if err := createResources(projectPath, namespace); err != nil {
+			fmt.Printf("Error: %s\n", err)
+			os.Exit(1)
+		}
 
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(applyCmd)
-	applyCmd.Flags().StringP("namespace", "n", "default", "Namespace to apply resources")
-	applyCmd.Flags().StringP("pick", "p", "", "Specify a repo manifest version to apply (by default maniplacer applys the latest)")
+	applyCmd.Flags().StringP("namespace", "n", utils.DefaultNamespace, "Namespace to apply resources")
 }
 
 func initKubeClients() error {
@@ -98,32 +96,45 @@ func initKubeClients() error {
 	return nil
 }
 
-func getLatestManifest(projectPath string) string {
-
+// getLatestManifest returns the most recent timestamped manifest directory.
+// ReadDir sorts by name and the timestamp format sorts lexicographically in
+// chronological order, so the last directory entry is the newest one.
+func getLatestManifest(projectPath string) (string, error) {
 	entries, err := os.ReadDir(projectPath)
 	if err != nil {
-		fmt.Printf("Could not read dir: %s\n", err)
-		os.Exit(1)
+		return "", fmt.Errorf("could not read manifests directory: %w", err)
 	}
 
-	if len(entries) == 0 {
-		fmt.Printf("No manifest versions found in %s\n", projectPath)
-		os.Exit(1)
+	latest := ""
+	for _, entry := range entries {
+		if entry.IsDir() {
+			latest = entry.Name()
+		}
 	}
 
-	return filepath.Join(projectPath, entries[len(entries)-1].Name())
+	if latest == "" {
+		return "", fmt.Errorf("no manifest versions found in %s", projectPath)
+	}
 
+	return filepath.Join(projectPath, latest), nil
 }
 
-func createResources(projectPath string, defaultNamespace string) {
+func createResources(projectPath string, defaultNamespace string) error {
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(k8sClient.Discovery()))
 	ctx := context.TODO()
-	latestManifestPath := getLatestManifest(projectPath)
+
+	latestManifestPath, err := getLatestManifest(projectPath)
+	if err != nil {
+		return err
+	}
+
 	entries, err := os.ReadDir(latestManifestPath)
 	if err != nil {
-		fmt.Printf("Could not read dir: %s\n", err)
-		os.Exit(1)
+		return fmt.Errorf("could not read manifest directory: %w", err)
 	}
+
+	appliedCount := 0
+	errorCount := 0
 
 	// Creates the k8s resources found in each entry
 	for _, entry := range entries {
@@ -131,6 +142,7 @@ func createResources(projectPath string, defaultNamespace string) {
 		data, err := os.ReadFile(filepath.Join(latestManifestPath, entry.Name()))
 		if err != nil {
 			fmt.Printf("Could not read file: %s\n", err)
+			errorCount++
 			continue
 		}
 
@@ -138,6 +150,7 @@ func createResources(projectPath string, defaultNamespace string) {
 		err = yaml.Unmarshal(data, &obj.Object)
 		if err != nil {
 			fmt.Printf("Could not parse YAML: %s\n", err)
+			errorCount++
 			continue
 		}
 
@@ -151,6 +164,7 @@ func createResources(projectPath string, defaultNamespace string) {
 		restMapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
 		if err != nil {
 			fmt.Printf("Could not create rest mapper: %s\n", err)
+			errorCount++
 			continue
 		}
 
@@ -165,43 +179,63 @@ func createResources(projectPath string, defaultNamespace string) {
 			}
 		}
 
-		existingNamespace, err := k8sClient.CoreV1().Namespaces().Get(ctx, namespace, v1.GetOptions{})
-		fmt.Println(existingNamespace)
-		if err != nil {
-			fmt.Printf("Could not get existing namespace %s\n", err)
-		}
-		if existingNamespace.Name == "" {
-			fmt.Printf("The namespace %s does not exists, do you want to create it? (y/N)\n", namespace)
-			var response string
-			fmt.Scanln(&response)
-			if response != "y" && response != "Y" && response != "yes" && response != "Yes" {
-				fmt.Printf("namespace '%s' does not exist and creation was declined", namespace)
+		if namespace != "" {
+			if err := ensureNamespace(ctx, namespace); err != nil {
+				fmt.Printf("Skipping %s: %s\n", entry.Name(), err)
+				errorCount++
 				continue
 			}
-
-			ns := &corev1.Namespace{
-				ObjectMeta: v1.ObjectMeta{
-					Name: namespace,
-					Labels: map[string]string{
-						"applier": "maniplacer",
-					},
-				},
-			}
-
-			k8sClient.CoreV1().Namespaces().Create(ctx, ns, v1.CreateOptions{})
-
 		}
 
 		applyOpts := v1.ApplyOptions{FieldManager: "maniplacer"}
 
-		_, err = dynamicClient.Resource(gvr).Namespace(namespace).Apply(context.TODO(), obj.GetName(), obj, applyOpts)
+		_, err = dynamicClient.Resource(gvr).Namespace(namespace).Apply(ctx, obj.GetName(), obj, applyOpts)
 		if err != nil {
-			fmt.Printf("apply error: %s\n", err)
-			os.Exit(1)
+			fmt.Printf("Could not apply %s: %s\n", entry.Name(), err)
+			errorCount++
+			continue
 		}
 
 		fmt.Printf("%s - Applied!\n", entry.Name())
-
+		appliedCount++
 	}
 
+	fmt.Printf("\nApply complete: %d applied, %d errors\n", appliedCount, errorCount)
+
+	if errorCount > 0 {
+		return fmt.Errorf("apply completed with %d errors", errorCount)
+	}
+
+	return nil
+}
+
+// ensureNamespace checks that the target namespace exists, offering to create it
+// if it does not.
+func ensureNamespace(ctx context.Context, namespace string) error {
+	_, err := k8sClient.CoreV1().Namespaces().Get(ctx, namespace, v1.GetOptions{})
+	if err == nil {
+		return nil
+	}
+	if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("could not check namespace '%s': %w", namespace, err)
+	}
+
+	if !utils.ConfirmMessage(fmt.Sprintf("The namespace '%s' does not exist, do you want to create it?", namespace)) {
+		return fmt.Errorf("namespace '%s' does not exist and creation was declined", namespace)
+	}
+
+	ns := &corev1.Namespace{
+		ObjectMeta: v1.ObjectMeta{
+			Name: namespace,
+			Labels: map[string]string{
+				"applier": "maniplacer",
+			},
+		},
+	}
+
+	if _, err := k8sClient.CoreV1().Namespaces().Create(ctx, ns, v1.CreateOptions{}); err != nil {
+		return fmt.Errorf("could not create namespace '%s': %w", namespace, err)
+	}
+
+	return nil
 }

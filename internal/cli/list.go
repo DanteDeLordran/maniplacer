@@ -3,9 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
-	"github.com/dantedelordran/maniplacer/internal/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -28,49 +26,14 @@ Notes:
 - The target namespace must already have generated manifests to be listed.`,
 	Args: cobra.MaximumNArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		logger := utils.LoggerFromContext(cmd.Context())
-
-		if !utils.IsValidProject() {
-			return fmt.Errorf("current directory is not a valid Maniplacer project")
-		}
-
-		namespace, err := cmd.Flags().GetString("namespace")
+		target, err := resolveTarget(cmd)
 		if err != nil {
-			logger.Debug("could not parse namespace flag, using default", "error", err)
-			namespace = utils.DefaultNamespace
-		}
-
-		// Validate namespace
-		if err := utils.ValidateNamespace(namespace); err != nil {
-			return fmt.Errorf("invalid namespace: %w", err)
-		}
-
-		repo, err := cmd.Flags().GetString("repo")
-		if err != nil {
-			return fmt.Errorf("could not get repo flag: %w", err)
-		}
-
-		if repo == "" {
-			return fmt.Errorf("repository name is required (use --repo flag)")
-		}
-
-		// Validate repo name and check for path traversal
-		if err := utils.ValidateRepoName(repo); err != nil {
-			return fmt.Errorf("invalid repository name: %w", err)
-		}
-		if err := utils.ValidateSafePath(repo); err != nil {
 			return err
 		}
 
-		manifestsDir, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("could not get current directory: %w", err)
-		}
+		manifestsDir := target.ManifestsDir()
 
-		manifestsDir = filepath.Join(manifestsDir, repo, "manifests", namespace)
-
-		_, err = os.Stat(manifestsDir)
-		if err != nil {
+		if _, err := os.Stat(manifestsDir); err != nil {
 			return fmt.Errorf("manifest directory does not exist: %w", err)
 		}
 
@@ -79,8 +42,7 @@ Notes:
 			return fmt.Errorf("could not read manifests directory: %w", err)
 		}
 
-		logger.Info("listing manifests", "namespace", namespace, "count", len(files))
-		fmt.Printf("Manifests in %s namespace:\n", namespace)
+		fmt.Printf("Manifests in %s namespace:\n", target.Namespace)
 		for _, file := range files {
 			fmt.Printf("- %s\n", file.Name())
 		}
@@ -91,6 +53,5 @@ Notes:
 
 func init() {
 	rootCmd.AddCommand(listCmd)
-	listCmd.Flags().StringP("namespace", "n", utils.DefaultNamespace, "Namespace for listing manifests")
-	listCmd.Flags().StringP("repo", "r", "", "Repo name")
+	addRepoNamespaceFlags(listCmd, "Namespace for listing manifests")
 }

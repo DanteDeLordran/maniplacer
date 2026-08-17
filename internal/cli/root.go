@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/dantedelordran/maniplacer/internal/utils"
@@ -15,18 +16,19 @@ var rootCmd = &cobra.Command{
 
 It generates the manifest in your local project in order for you to apply or store as you like.
 `,
+	// A command that fails at runtime is not a usage mistake, so don't dump the
+	// help text after it; Execute reports the error once instead.
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Initialize logger with context
-		ctx := context.WithValue(cmd.Context(), loggerKey{}, utils.Logger())
-		cmd.SetContext(ctx)
+		cmd.SetContext(utils.ContextWithLogger(cmd.Context(), utils.Logger()))
 	},
 }
 
-type loggerKey struct{}
-
 func Execute() {
 	if err := rootCmd.ExecuteContext(context.Background()); err != nil {
-		utils.Logger().Error("command execution failed", "error", err)
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
 }
