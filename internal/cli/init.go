@@ -102,15 +102,13 @@ After initialization, you can:
 				}
 			}
 
-			if f, err := os.Create(filepath.Join(path, repoName, "config.json")); err != nil {
-				return fmt.Errorf("failed to create config file: %w", err)
-			} else {
-				defer f.Close()
+			if err := utils.CreateConfigFile(filepath.Join(path, repoName), utils.FormatJSON); err != nil {
+				return err
 			}
 
-			logger.Info("repository created successfully", "name", repoName)
+			logger.Debug("repository created successfully", "name", repoName)
 		} else {
-			logger.Info("skipping repository initialization")
+			logger.Debug("skipping repository initialization")
 		}
 
 		fmt.Printf("Run 'cd %s'\n", path)

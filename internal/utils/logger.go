@@ -9,7 +9,8 @@ import (
 var Log *slog.Logger
 
 func init() {
-	Log = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	// Logs go to stderr so stdout stays clean for command output
+	Log = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: getLogLevel(),
 	}))
 }
@@ -26,8 +27,12 @@ func Logger() *slog.Logger {
 	return Log
 }
 
-// LoggerFromContext returns a logger from context, or the global logger if not found
+// LoggerFromContext returns a logger from context, or the global logger if the
+// context is nil or carries no logger.
 func LoggerFromContext(ctx context.Context) *slog.Logger {
+	if ctx == nil {
+		return Log
+	}
 	if logger, ok := ctx.Value(loggerKey{}).(*slog.Logger); ok {
 		return logger
 	}

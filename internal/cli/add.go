@@ -42,57 +42,23 @@ templates/staging directory of the "myrepo" project.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		logger := utils.LoggerFromContext(cmd.Context())
 
-		if !utils.IsValidProject() {
-			return fmt.Errorf("current directory is not a valid Maniplacer project")
-		}
-
-		namespace, err := cmd.Flags().GetString("namespace")
+		target, err := resolveTarget(cmd)
 		if err != nil {
-			logger.Debug("could not get namespace flag, using default", "error", err)
-			namespace = utils.DefaultNamespace
-		}
-
-		// Validate namespace
-		if err := utils.ValidateNamespace(namespace); err != nil {
-			return fmt.Errorf("invalid namespace: %w", err)
-		}
-
-		repo, err := cmd.Flags().GetString("repo")
-		if err != nil {
-			return fmt.Errorf("could not get repo flag: %w", err)
-		}
-
-		if repo == "" {
-			return fmt.Errorf("repository name is required (use --repo flag)")
-		}
-
-		// Validate repo name and check for path traversal
-		if err := utils.ValidateRepoName(repo); err != nil {
-			return fmt.Errorf("invalid repository name: %w", err)
-		}
-		if err := utils.ValidateSafePath(repo); err != nil {
 			return err
 		}
 
-		current, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("could not get current directory: %w", err)
-		}
-
-		repoPath := filepath.Join(current, repo)
-
 		// Validate repo path exists
-		if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-			return fmt.Errorf("repository '%s' does not exist", repo)
+		if _, err := os.Stat(target.RepoPath()); os.IsNotExist(err) {
+			return fmt.Errorf("repository '%s' does not exist", target.Repo)
 		}
 
 		for _, comp := range args {
 			if slices.Contains(templates.AllowedComponents, comp) {
-				logger.Info("creating component template", "component", comp, "namespace", namespace)
+				logger.Debug("creating component template", "component", comp, "namespace", target.Namespace)
 
 				t := templates.TemplateRegistry[comp]
 
-				templateDir := filepath.Join(repoPath, "templates", namespace)
+				templateDir := target.TemplatesDir()
 				if err := os.MkdirAll(templateDir, utils.DirPermission); err != nil {
 					return fmt.Errorf("could not create templates namespace directory: %w", err)
 				}
@@ -103,7 +69,6 @@ templates/staging directory of the "myrepo" project.`,
 					// File exists
 					confirmed := utils.ConfirmMessage(fmt.Sprintf("%s already exists, do you want to replace it?", filepath.Base(outputPath)))
 					if !confirmed {
-						logger.Info("skipping component", "component", comp)
 						fmt.Printf("Skipping %s...\n", filepath.Base(outputPath))
 						continue
 					}
@@ -117,8 +82,7 @@ templates/staging directory of the "myrepo" project.`,
 					return fmt.Errorf("failed to write file: %w", err)
 				}
 
-				logger.Info("component template created", "component", comp, "namespace", namespace)
-				fmt.Printf("%s.yaml successfully generated in %s namespace!\n", comp, namespace)
+				fmt.Printf("%s.yaml successfully generated in %s namespace!\n", comp, target.Namespace)
 
 			} else {
 				logger.Warn("unknown component, skipping", "component", comp)
@@ -132,6 +96,5 @@ templates/staging directory of the "myrepo" project.`,
 
 func init() {
 	rootCmd.AddCommand(addCmd)
-	addCmd.Flags().StringP("namespace", "n", utils.DefaultNamespace, "Namespace for your component template")
-	addCmd.Flags().StringP("repo", "r", "", "Repo name")
+	addRepoNamespaceFlags(addCmd, "Namespace for your component template")
 }

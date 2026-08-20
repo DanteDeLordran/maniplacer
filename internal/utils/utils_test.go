@@ -89,31 +89,6 @@ func TestValidateProjectName(t *testing.T) {
 	}
 }
 
-func TestSanitizeName(t *testing.T) {
-	tests := []struct {
-		name   string
-		input  string
-		expect string
-	}{
-		{"already valid", "myapp", "myapp"},
-		{"uppercase", "MyApp", "myapp"},
-		{"with spaces", "my app", "my-app"},
-		{"with underscore", "my_app", "my-app"},
-		{"starts with dash", "-myapp", "myapp"},
-		{"ends with dash", "myapp-", "myapp"},
-		{"too long", "this-is-a-very-long-name-that-exceeds-the-maximum-allowed-length", "this-is-a-very-long-name-that-exceeds-the-maximum-allowed-lengt"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := SanitizeName(tt.input)
-			if result != tt.expect {
-				t.Errorf("SanitizeName(%q) = %q, want %q", tt.input, result, tt.expect)
-			}
-		})
-	}
-}
-
 func TestIsPathTraversal(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -208,5 +183,40 @@ func TestIsValidProject(t *testing.T) {
 
 	if !IsValidProject() {
 		t.Error("IsValidProject() returned false for valid project")
+	}
+}
+
+func TestCreateConfigFile(t *testing.T) {
+	tests := []struct {
+		name     string
+		filetype string
+		wantFile string
+	}{
+		{"json", FormatJSON, "config.json"},
+		{"yaml", FormatYAML, "config.yaml"},
+		{"yml", FormatYML, "config.yml"},
+		{"unknown falls back to json", "toml", "config.json"},
+		{"leading dot is tolerated", ".yaml", "config.yaml"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+
+			if err := CreateConfigFile(tmpDir, tt.filetype); err != nil {
+				t.Fatalf("CreateConfigFile() error = %v", err)
+			}
+
+			data, err := os.ReadFile(filepath.Join(tmpDir, tt.wantFile))
+			if err != nil {
+				t.Fatalf("could not read created config file: %v", err)
+			}
+
+			// An empty config file makes the next 'generate' fail, so the seed
+			// content must be a non-empty, parseable document.
+			if len(data) == 0 {
+				t.Fatal("CreateConfigFile() wrote an empty file")
+			}
+		})
 	}
 }

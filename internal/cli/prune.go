@@ -35,88 +35,51 @@ If confirmed, this will remove all manifests inside the 'staging' namespace of t
 	RunE: func(cmd *cobra.Command, args []string) error {
 		logger := utils.LoggerFromContext(cmd.Context())
 
-		if !utils.IsValidProject() {
-			return fmt.Errorf("current directory is not a valid Maniplacer project")
-		}
-
-		confirmed := utils.ConfirmMessage("Confirm from Deleting manifests?")
-
-		namespace, err := cmd.Flags().GetString("namespace")
+		target, err := resolveTarget(cmd)
 		if err != nil {
-			logger.Debug("could not parse namespace flag, using default", "error", err)
-			namespace = utils.DefaultNamespace
-		}
-
-		// Validate namespace
-		if err := utils.ValidateNamespace(namespace); err != nil {
-			return fmt.Errorf("invalid namespace: %w", err)
-		}
-
-		repo, err := cmd.Flags().GetString("repo")
-		if err != nil {
-			return fmt.Errorf("could not get repo flag: %w", err)
-		}
-
-		if repo == "" {
-			return fmt.Errorf("repository name is required (use --repo flag)")
-		}
-
-		// Validate repo name and check for path traversal
-		if err := utils.ValidateRepoName(repo); err != nil {
-			return fmt.Errorf("invalid repository name: %w", err)
-		}
-		if err := utils.ValidateSafePath(repo); err != nil {
 			return err
 		}
 
-		currentDir, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("could not get current directory: %w", err)
-		}
+		manifestsDir := target.ManifestsDir()
 
-		currentDir = filepath.Join(currentDir, repo, "manifests", namespace)
-
-		_, err = os.Stat(currentDir)
-		if err != nil {
+		if _, err := os.Stat(manifestsDir); err != nil {
 			return fmt.Errorf("manifest directory does not exist: %w", err)
 		}
 
-		files, err := os.ReadDir(currentDir)
+		files, err := os.ReadDir(manifestsDir)
 		if err != nil {
 			return fmt.Errorf("could not read manifests directory: %w", err)
 		}
 
 		if len(files) == 0 {
-			fmt.Printf("No manifests in %s namespace\n", namespace)
+			fmt.Printf("No manifests in %s namespace\n", target.Namespace)
 			return nil
 		}
 
-		if !confirmed {
+		// Only ask once there is actually something to delete
+		if !utils.ConfirmMessage(fmt.Sprintf("Delete %d manifest(s) in the %s namespace?", len(files), target.Namespace)) {
 			fmt.Printf("No manifest will be deleted :P\n")
 			return nil
 		}
 
-		logger.Info("deleting manifests", "namespace", namespace, "count", len(files))
-		fmt.Printf("Deleting manifests in %s namespace...\n", namespace)
+		fmt.Printf("Deleting manifests in %s namespace...\n", target.Namespace)
 
 		for _, file := range files {
-			filePath := filepath.Join(currentDir, file.Name())
+			filePath := filepath.Join(manifestsDir, file.Name())
 			if err = os.RemoveAll(filePath); err != nil {
 				logger.Warn("could not delete file, skipping", "file", file.Name(), "error", err)
 				fmt.Printf("Could not delete %s due to %s, skipping...\n", file.Name(), err)
 				continue
 			}
-			logger.Info("file deleted", "file", file.Name())
 			fmt.Printf("Successfully deleted %s\n", file.Name())
 		}
 
-		logger.Info("prune complete", "namespace", namespace)
+		logger.Debug("prune complete", "namespace", target.Namespace)
 		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(pruneCmd)
-	pruneCmd.Flags().StringP("namespace", "n", utils.DefaultNamespace, "Namespace for pruning manifests")
-	pruneCmd.Flags().StringP("repo", "r", "", "Repo name")
+	addRepoNamespaceFlags(pruneCmd, "Namespace for pruning manifests")
 }

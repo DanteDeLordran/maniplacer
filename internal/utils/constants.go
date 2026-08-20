@@ -81,22 +81,6 @@ func ValidateProjectName(name string) error {
 	return nil
 }
 
-// SanitizeName sanitizes a name to be K8s-compliant
-func SanitizeName(name string) string {
-	// Convert to lowercase
-	name = strings.ToLower(name)
-	// Replace invalid characters with '-'
-	name = regexp.MustCompile(`[^a-z0-9-]`).ReplaceAllString(name, "-")
-	// Remove leading/trailing dashes
-	name = strings.Trim(name, "-")
-	// Limit length
-	if len(name) > 63 {
-		name = name[:63]
-		name = strings.TrimRight(name, "-")
-	}
-	return name
-}
-
 // IsPathTraversal checks if a path contains path traversal attempts
 func IsPathTraversal(path string) bool {
 	// Check for common path traversal patterns

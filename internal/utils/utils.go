@@ -55,11 +55,37 @@ func ConfirmMessage(message string) bool {
 	return input == "y" || input == "yes"
 }
 
+// starterConfig is the seed content written into a new repo's config file. An
+// empty file is not valid JSON or a usable YAML mapping, so 'generate' would
+// fail on it straight away; this gives a parseable document to build on.
+const (
+	starterConfigJSON = `{
+  "name": "my-app",
+  "namespace": "default"
+}
+`
+	starterConfigYAML = `name: my-app
+namespace: default
+`
+)
+
+// CreateConfigFile writes a starter config file of the given type (json, yaml or
+// yml; anything else falls back to json) into path.
 func CreateConfigFile(path string, filetype string) error {
-	if f, err := os.Create(filepath.Join(path, "config.json")); err != nil {
-		return fmt.Errorf("failed to create config file: %w", err)
-	} else {
-		defer f.Close()
-		return nil
+	filetype = strings.ToLower(strings.TrimPrefix(filetype, "."))
+
+	content := starterConfigJSON
+	switch filetype {
+	case "yaml", "yml":
+		content = starterConfigYAML
+	default:
+		filetype = "json"
 	}
+
+	configPath := filepath.Join(path, fmt.Sprintf("%s.%s", ConfigFileName, filetype))
+	if err := os.WriteFile(configPath, []byte(content), FilePermission); err != nil {
+		return fmt.Errorf("failed to create config file: %w", err)
+	}
+
+	return nil
 }
