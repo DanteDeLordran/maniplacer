@@ -20,7 +20,7 @@ IFS=$'\034' read -r name digest download_url < <(sed -n '2p' "$parsed")
 
 payload="$TEMP_DIR/payload"
 printf 'maniplacer\n' > "$payload"
-[[ "$(calculate_sha256 "$payload")" == "b5eaca8fb661151deec0e20b170e289eab3ea2d93cfdd4a07fba7f5c90c597e8" ]]
+[[ "$(calculate_sha256 "$payload")" == "64882ed52843f3b78d62e2aa82d2be4dedc70c4a9f65c74d915e68b91086de35" ]]
 
 HOME="$TEMP_DIR/home"
 INSTALL_DIR="$HOME/bin with spaces"
