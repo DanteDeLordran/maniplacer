@@ -584,6 +584,75 @@ make build-all
 make release
 ```
 
+### Publishing a Release
+
+Releases are built from version tags after `develop` has been merged into
+`main`. The release workflow runs tests, builds and verifies every supported
+binary, creates checksums and provenance attestations, and publishes the GitHub
+release.
+
+#### 1. Push `develop`
+
+```bash
+git switch develop
+git push origin develop
+```
+
+This starts the CI workflow for `develop`.
+
+#### 2. Open and merge a pull request
+
+```bash
+gh pr create \
+  --base main \
+  --head develop \
+  --title "Release preparation for 1.5.0" \
+  --body "Prepare Maniplacer 1.5.0 for release."
+```
+
+Wait for all CI checks to pass, review the pull request, and merge it without
+deleting the long-lived `develop` branch:
+
+```bash
+gh pr merge --merge
+```
+
+You can also create and merge the pull request from the GitHub website.
+
+#### 3. Update local `main`
+
+```bash
+git switch main
+git pull --ff-only origin main
+git log --oneline -5
+```
+
+Confirm that the merged changes appear in the log before creating the tag.
+
+#### 4. Create and push the version tag
+
+Use semantic versioning and follow the repository's existing tag style without
+a `v` prefix:
+
+```bash
+git tag -a 1.5.0 -m "Maniplacer 1.5.0"
+git push origin 1.5.0
+```
+
+Pushing the tag starts `.github/workflows/release.yml`. The tagged commit is
+what gets built, so always create the tag from the updated `main` branch.
+
+#### 5. Monitor the release
+
+```bash
+gh run list --workflow=release.yml
+gh run watch
+gh release view 1.5.0
+```
+
+Do not run `gh release create` manually; the release workflow creates the
+release and uploads its assets.
+
 ### Run Tests
 
 ```bash
