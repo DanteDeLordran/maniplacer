@@ -16,21 +16,17 @@ var initCmd = &cobra.Command{
 	Short: "Initializes a project scaffolding",
 	Long: `The init command bootstraps a new Maniplacer project by creating the required folder structure and configuration files.
 
-It prepares the environment so you can immediately start adding and generating Kubernetes manifests. If a project name is provided with --name (or -n), it creates a new project folder with that name. Otherwise, it can initialize the project in the current working directory after confirmation.
+It prepares the environment so you can immediately start adding and generating Kubernetes manifests. If a project name is provided as an argument, it creates a new project folder with that name. Otherwise, it can initialize the project in the current working directory after confirmation.
 
 During initialization, the following happens:
 - A project root is created and registered as a valid Maniplacer project.
-- The required directories are set up:
-  * templates/   → for reusable Kubernetes component templates.
-  * manifests/   → for generated manifests ready to be applied.
-- A default config.json file is created in the project root.
-- Optional: you can initialize a new repository inside the project, which sets up its own templates/ and manifests/ directories, along with a config.json file.
+- Optional: you can initialize a repository inside the project with its own templates/, manifests/, and config.json.
 
 This makes it easy to start from a clean, organized structure without having to manually configure everything.
 
 Example usage:
   maniplacer init
-  maniplacer init --name my-app
+  maniplacer init my-app
 
 After initialization, you can:
 - Add components with 'maniplacer add'

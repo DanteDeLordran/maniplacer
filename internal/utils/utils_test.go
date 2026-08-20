@@ -1,9 +1,12 @@
 package utils
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestValidateRepoName(t *testing.T) {
@@ -212,10 +215,25 @@ func TestCreateConfigFile(t *testing.T) {
 				t.Fatalf("could not read created config file: %v", err)
 			}
 
-			// An empty config file makes the next 'generate' fail, so the seed
-			// content must be a non-empty, parseable document.
-			if len(data) == 0 {
-				t.Fatal("CreateConfigFile() wrote an empty file")
+			var config map[string]any
+			if filepath.Ext(tt.wantFile) == ".json" {
+				err = json.Unmarshal(data, &config)
+			} else {
+				err = yaml.Unmarshal(data, &config)
+			}
+			if err != nil {
+				t.Fatalf("starter config is not parseable: %v", err)
+			}
+
+			for _, key := range []string{
+				"name", "namespace", "image", "replicas", "containerPort",
+				"servicePort", "configValue", "secretPlaceholder", "minReplicas",
+				"maxReplicas", "cpuUtilization", "memoryUtilization", "gatewayName",
+				"gatewayNamespace", "hostname", "pathPrefix", "healthPath",
+			} {
+				if _, ok := config[key]; !ok {
+					t.Errorf("starter config is missing %q", key)
+				}
 			}
 		})
 	}

@@ -61,11 +61,41 @@ func ConfirmMessage(message string) bool {
 const (
 	starterConfigJSON = `{
   "name": "my-app",
-  "namespace": "default"
+  "namespace": "default",
+  "image": "nginx:1.27-alpine",
+  "replicas": 2,
+  "containerPort": 8080,
+  "servicePort": 80,
+  "configValue": "development",
+  "secretPlaceholder": "replace-at-render-time",
+  "minReplicas": 2,
+  "maxReplicas": 5,
+  "cpuUtilization": 75,
+  "memoryUtilization": 80,
+  "gatewayName": "main-gateway",
+  "gatewayNamespace": "default",
+  "hostname": "my-app.example.com",
+  "pathPrefix": "/",
+  "healthPath": "/healthz"
 }
 `
 	starterConfigYAML = `name: my-app
 namespace: default
+image: nginx:1.27-alpine
+replicas: 2
+containerPort: 8080
+servicePort: 80
+configValue: development
+secretPlaceholder: replace-at-render-time
+minReplicas: 2
+maxReplicas: 5
+cpuUtilization: 75
+memoryUtilization: 80
+gatewayName: main-gateway
+gatewayNamespace: default
+hostname: my-app.example.com
+pathPrefix: /
+healthPath: /healthz
 `
 )
 

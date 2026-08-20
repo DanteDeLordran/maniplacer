@@ -207,19 +207,19 @@ Typical workflow:
 3. Run 'maniplacer generate' to render manifests into a dedicated timestamped output folder.
 
 Example usage:
-  maniplacer generate
-  maniplacer generate -n staging
+  maniplacer generate -r myrepo
+  maniplacer generate -n staging -r myrepo
   maniplacer generate -f yaml -n production -r myrepo
-  maniplacer generate -c /path/to/custom-config.json
-  maniplacer generate -c custom.yaml -f yaml
-  maniplacer generate --dry-run
-  maniplacer generate --strict=false
+  maniplacer generate -c /path/to/custom-config.json -r myrepo
+  maniplacer generate -c custom.yaml -f yaml -r myrepo
+  maniplacer generate --dry-run -r myrepo
+  maniplacer generate --strict=false -r myrepo
 
 Notes:
 - The current directory must be a valid Maniplacer project (contain a '.maniplacer' file).
 - The specified namespace must exist under the 'templates' directory.
-- Each run creates a unique timestamped output folder for safe, repeatable generation.
-- Use --dry-run to preview without writing files.
+- Each run writes to a timestamped output folder.
+- Use --dry-run to validate without writing files.
 - Generation is strict by default: a template referencing a key that is absent from the config is an error, and rendered output must be valid YAML. Pass --strict=false to fall back to the lenient behaviour.`,
 	Args: cobra.MaximumNArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -448,6 +448,6 @@ func init() {
 	addRepoNamespaceFlags(generateCmd, "Namespace for template to be generated")
 	generateCmd.Flags().StringP("format", "f", "", "Config file format (json, yaml, yml). If not specified, auto-detects from available files.")
 	generateCmd.Flags().StringP("config", "c", "", "Custom path to config file (overrides default config file detection)")
-	generateCmd.Flags().Bool("dry-run", false, "Preview generation without writing files")
+	generateCmd.Flags().Bool("dry-run", false, "Validate generation without writing files")
 	generateCmd.Flags().Bool("strict", true, "Fail on config keys missing from the config file and on output that is not valid YAML")
 }

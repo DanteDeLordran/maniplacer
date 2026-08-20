@@ -26,43 +26,43 @@ var (
 )
 
 var applyCmd = &cobra.Command{
-	Use:   "apply [project-name]",
-	Short: "Apply Kubernetes manifests for a project",
-	Long:  `Apply all Kubernetes manifests found in the project directory`,
+	Use:   "apply [repository]",
+	Short: "Apply generated Kubernetes manifests for a repository",
+	Long:  `Apply the latest generated Kubernetes manifests for a repository.`,
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-
+	RunE: func(cmd *cobra.Command, args []string) error {
 		if !utils.IsValidProject() {
-			fmt.Printf("Error: Current directory is not a valid Maniplacer project\n")
-			os.Exit(1)
+			return fmt.Errorf("current directory is not a valid Maniplacer project")
 		}
 
 		repoName := args[0]
+		if err := utils.ValidateRepoName(repoName); err != nil {
+			return fmt.Errorf("invalid repository name: %w", err)
+		}
 
 		namespace, err := cmd.Flags().GetString("namespace")
 		if err != nil {
-			fmt.Printf("Could not get namespace flag, using '%s'\n", utils.DefaultNamespace)
-			namespace = utils.DefaultNamespace
+			return fmt.Errorf("could not get namespace flag: %w", err)
+		}
+		if err := utils.ValidateNamespace(namespace); err != nil {
+			return fmt.Errorf("invalid namespace: %w", err)
 		}
 
 		if err := initKubeClients(); err != nil {
-			fmt.Printf("Error initializing Kubernetes client: %s\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error initializing Kubernetes client: %w", err)
 		}
 
 		currentPath, err := os.Getwd()
 		if err != nil {
-			fmt.Printf("Could not get current path: %s\n", err)
-			os.Exit(1)
+			return fmt.Errorf("could not get current path: %w", err)
 		}
 
 		projectPath := filepath.Join(currentPath, repoName, "manifests", namespace)
 
 		if err := createResources(projectPath, namespace); err != nil {
-			fmt.Printf("Error: %s\n", err)
-			os.Exit(1)
+			return err
 		}
-
+		return nil
 	},
 }
 

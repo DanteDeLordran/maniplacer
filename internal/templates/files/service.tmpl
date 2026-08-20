@@ -1,16 +1,16 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: ""
-  namespace: ""
+  name: {{ .name | Quote }}
+  namespace: {{ .namespace | Quote }}
   labels:
-    app: ""
+    app.kubernetes.io/name: {{ .name | Quote }}
 spec:
   selector:
-    app: ""
+    app.kubernetes.io/name: {{ .name | Quote }}
   ports:
-  - name: http
-    protocol: TCP
-    port: 80
-    targetPort: 8080
+    - name: http
+      protocol: TCP
+      port: {{ .servicePort }}
+      targetPort: {{ .containerPort }}
   type: ClusterIP

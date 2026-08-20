@@ -2,22 +2,24 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: ""
-  name: ""
-  namespace: ""
+    app.kubernetes.io/name: {{ .name | Quote }}
+  name: {{ .name | Quote }}
+  namespace: {{ .namespace | Quote }}
 spec:
-  replicas: 3
+  replicas: {{ .replicas }}
   selector:
     matchLabels:
-      app: ""
+      app.kubernetes.io/name: {{ .name | Quote }}
   template:
     metadata:
       labels:
-        app: ""
+        app.kubernetes.io/name: {{ .name | Quote }}
     spec:
       containers:
-      - image: ""
-        imagePullPolicy: Always
-        name: ""
-        ports:
-        - containerPort: 80
+        - name: {{ .name | Quote }}
+          image: {{ .image | Quote }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: {{ .containerPort }}
+              protocol: TCP
