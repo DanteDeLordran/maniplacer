@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags: ["*.*.*", "v*.*.*"]
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test
+        run: go test -race ./...
+      - name: Build release assets
+        env:
+          TAG: ${{ github.ref_name }}
+        run: make build-all VERSION="${TAG#v}"
+      - name: Smoke test version metadata
+        env:
+          TAG: ${{ github.ref_name }}
+        run: test "$(dist/maniplacer-linux-amd64 --version)" = "${TAG#v}"
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/maniplacer-linux-amd64
+            dist/maniplacer-linux-arm64
+            dist/maniplacer-darwin-amd64
+            dist/maniplacer-darwin-arm64
+            dist/maniplacer-windows-amd64.exe
+            dist/checksums.txt
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            dist/maniplacer-linux-amd64 \
+            dist/maniplacer-linux-arm64 \
+            dist/maniplacer-darwin-amd64 \
+            dist/maniplacer-darwin-arm64 \
+            dist/maniplacer-windows-amd64.exe \
+            dist/checksums.txt \
+            --generate-notes --verify-tag
