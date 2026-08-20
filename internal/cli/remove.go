@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
+	"github.com/dantedelordran/maniplacer/internal/templates"
 	"github.com/dantedelordran/maniplacer/internal/utils"
 	"github.com/spf13/cobra"
 )
@@ -46,6 +48,9 @@ Examples:
 		}
 
 		for _, comp := range args {
+			if !slices.Contains(templates.AllowedComponents, comp) {
+				return fmt.Errorf("unknown component %q", comp)
+			}
 			templatePath := filepath.Join(templatesPath, fmt.Sprintf("%s.yaml", comp))
 
 			file, err := os.Stat(templatePath)

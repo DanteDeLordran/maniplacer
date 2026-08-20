@@ -2,303 +2,294 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dantedelordran/maniplacer/internal/utils"
 	"github.com/spf13/cobra"
 )
 
+const (
+	latestReleaseURL = "https://api.github.com/repos/dantedelordran/maniplacer/releases/latest"
+	maxBinarySize    = 512 << 20
+)
+
 var updateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "Updates Maniplacer to the latest version",
-	Long: `Checks GitHub for the latest release of Maniplacer and updates the local binary if a newer version is available.
+	Short: "Update Maniplacer to the latest version",
+	Long: `Checks GitHub for a newer Maniplacer release, verifies the downloaded
+binary against the SHA-256 digest published by GitHub, and atomically replaces
+the current executable.
 
-By default, the command will ask for confirmation before updating.
-You can skip confirmation with the --force flag.
-
-The update process:
-1. Fetches the latest release version from GitHub.
-2. Compares it with the currently installed version.
-3. If a newer version exists, downloads the appropriate binary for your OS/ARCH.
-4. Creates a backup of the existing binary.
-5. Replaces the old binary with the new one via an update script (applied after the process exits).
-
-Example:
-  maniplacer update
-  maniplacer update --force`,
+Self-update is supported on Linux and macOS. On Windows, rerun installer.sh so
+the running executable can be replaced safely.`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		logger := utils.LoggerFromContext(cmd.Context())
+		if runtime.GOOS == "windows" {
+			return fmt.Errorf("self-update is not supported on Windows; rerun installer.sh to update")
+		}
 
 		force, err := cmd.Flags().GetBool("force")
 		if err != nil {
-			logger.Debug("could not parse force flag, using default", "error", err)
-			force = false
+			return fmt.Errorf("could not parse force flag: %w", err)
 		}
 
-		ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
-		defer cancel()
-
-		version, err := getLatestVersion(ctx)
+		lookupCtx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+		release, err := getLatestRelease(lookupCtx)
+		cancel()
 		if err != nil {
-			return fmt.Errorf("could not get latest version: %w", err)
+			return fmt.Errorf("could not get latest release: %w", err)
 		}
 
-		if version == utils.Version {
+		latest := normalizeVersion(release.TagName)
+		newer, err := isNewerVersion(utils.Version, latest)
+		if err != nil {
+			return err
+		}
+		if !newer {
 			fmt.Println("No new version available")
 			return nil
 		}
 
-		logger.Info("new version available", "current", utils.Version, "latest", version)
-		fmt.Println("New version available:", version)
-
-		if !force {
-			choice := utils.ConfirmMessage("Are you sure you want to update?")
-
-			if !choice {
-				fmt.Printf("Not updating, staying in version %s\n", utils.Version)
-				return nil
-			}
+		fmt.Printf("New version available: %s\n", latest)
+		if !force && !utils.ConfirmMessage("Are you sure you want to update?") {
+			fmt.Printf("Not updating, staying on version %s\n", utils.Version)
+			return nil
 		}
 
-		fmt.Printf("Updating from %s to %s...\n", utils.Version, version)
-
-		if err := downloadAndReplace(ctx, version); err != nil {
+		downloadCtx, cancel := context.WithTimeout(cmd.Context(), 5*time.Minute)
+		defer cancel()
+		if err := downloadAndReplace(downloadCtx, release); err != nil {
 			return fmt.Errorf("update failed: %w", err)
 		}
 
-		logger.Info("update successful", "version", version)
-		fmt.Println("Successfully updated to", version)
-
+		fmt.Println("Successfully updated to", latest)
 		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(updateCmd)
-	updateCmd.Flags().BoolP("force", "f", false, "Forces auto update")
+	updateCmd.Flags().BoolP("force", "f", false, "Skip update confirmation")
 }
 
 type GitHubRelease struct {
 	TagName string `json:"tag_name"`
 	Assets  []struct {
 		Name               string `json:"name"`
+		Digest             string `json:"digest"`
 		BrowserDownloadURL string `json:"browser_download_url"`
 	} `json:"assets"`
 }
 
-func getLatestVersion(ctx context.Context) (string, error) {
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/repos/dantedelordran/maniplacer/releases/latest", nil)
+func getLatestRelease(ctx context.Context) (GitHubRelease, error) {
+	var release GitHubRelease
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latestReleaseURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return release, fmt.Errorf("failed to create request: %w", err)
 	}
-
-	// Add User-Agent header (required by GitHub API)
+	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "maniplacer/"+utils.Version)
 
-	res, err := client.Do(req)
+	res, err := updateHTTPClient(30 * time.Second).Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to check releases: %w", err)
+		return release, fmt.Errorf("failed to check releases: %w", err)
 	}
 	defer res.Body.Close()
-
 	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub API returned status %d", res.StatusCode)
+		return release, fmt.Errorf("GitHub API returned status %d", res.StatusCode)
 	}
-
-	var release GitHubRelease
-	if err := json.NewDecoder(res.Body).Decode(&release); err != nil {
-		return "", fmt.Errorf("failed to decode release info: %w", err)
+	if err := json.NewDecoder(io.LimitReader(res.Body, 4<<20)).Decode(&release); err != nil {
+		return release, fmt.Errorf("failed to decode release info: %w", err)
 	}
-
-	version := release.TagName
-	if len(version) > 0 && version[0] == 'v' {
-		version = version[1:]
+	if release.TagName == "" {
+		return release, fmt.Errorf("release has no tag")
 	}
-
-	return version, nil
+	return release, nil
 }
 
-func downloadAndReplace(ctx context.Context, version string) error {
+func updateHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("too many redirects")
+			}
+			if req.URL.Scheme != "https" || !trustedDownloadHost(req.URL) {
+				return fmt.Errorf("refusing redirect to untrusted URL %s", req.URL.Redacted())
+			}
+			return nil
+		},
+	}
+}
+
+func trustedDownloadHost(downloadURL *url.URL) bool {
+	host := strings.ToLower(downloadURL.Hostname())
+	return host == "github.com" || host == "api.github.com" ||
+		strings.HasSuffix(host, ".githubusercontent.com")
+}
+
+func downloadAndReplace(ctx context.Context, release GitHubRelease) error {
+	binaryName, err := releaseBinaryName(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return err
+	}
+
+	var downloadURL, expectedDigest string
+	for _, asset := range release.Assets {
+		if asset.Name == binaryName {
+			downloadURL = asset.BrowserDownloadURL
+			expectedDigest = strings.TrimPrefix(strings.ToLower(asset.Digest), "sha256:")
+			break
+		}
+	}
+	if downloadURL == "" {
+		return fmt.Errorf("release %s has no asset named %s", release.TagName, binaryName)
+	}
+	if !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(expectedDigest) {
+		return fmt.Errorf("release asset %s has no valid SHA-256 digest", binaryName)
+	}
+	parsedURL, err := url.Parse(downloadURL)
+	if err != nil || parsedURL.Scheme != "https" || !trustedDownloadHost(parsedURL) {
+		return fmt.Errorf("release asset has an untrusted download URL")
+	}
+
 	execPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
-
-	goos := runtime.GOOS
-	arch := runtime.GOARCH
-	binaryName := fmt.Sprintf("maniplacer-%s-%s", goos, arch)
-
-	downloadURL, err := getDownloadURL(ctx, version, binaryName)
+	execPath, err = filepath.EvalSymlinks(execPath)
 	if err != nil {
-		return fmt.Errorf("failed to get download URL: %w", err)
+		return fmt.Errorf("failed to resolve executable path: %w", err)
+	}
+	currentInfo, err := os.Stat(execPath)
+	if err != nil {
+		return fmt.Errorf("failed to inspect executable: %w", err)
 	}
 
-	utils.Logger().Info("downloading binary", "url", downloadURL)
-	fmt.Printf("Downloading %s...\n", downloadURL)
-
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 5 * time.Minute, // Longer timeout for downloads
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create download request: %w", err)
 	}
-
-	res, err := client.Do(req)
+	req.Header.Set("User-Agent", "maniplacer/"+utils.Version)
+	res, err := updateHTTPClient(5 * time.Minute).Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to download binary: %w", err)
 	}
 	defer res.Body.Close()
-
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("download failed with status %d", res.StatusCode)
 	}
 
-	tempFile, err := os.CreateTemp("", "maniplacer-update-*")
+	tempFile, err := os.CreateTemp(filepath.Dir(execPath), ".maniplacer-update-*")
 	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
+		return fmt.Errorf("failed to create update file beside executable: %w", err)
 	}
-	defer os.Remove(tempFile.Name())
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath)
 
-	_, err = io.Copy(tempFile, res.Body)
-	if err != nil {
+	hash := sha256.New()
+	written, copyErr := io.Copy(io.MultiWriter(tempFile, hash), io.LimitReader(res.Body, maxBinarySize+1))
+	if copyErr != nil {
 		tempFile.Close()
-		return fmt.Errorf("failed to write temp file: %w", err)
+		return fmt.Errorf("failed to write update file: %w", copyErr)
 	}
-	tempFile.Close()
-
-	if err := os.Chmod(tempFile.Name(), 0755); err != nil {
-		return fmt.Errorf("failed to make temp file executable: %w", err)
+	if written > maxBinarySize {
+		tempFile.Close()
+		return fmt.Errorf("download exceeds %d bytes", maxBinarySize)
 	}
-
-	backupPath := execPath + ".backup"
-	updatePath := execPath + ".update"
-	scriptPath := execPath + ".update.sh"
-
-	if err := copyFile(tempFile.Name(), backupPath); err != nil {
-		return fmt.Errorf("failed to create backup: %w", err)
+	if actual := hex.EncodeToString(hash.Sum(nil)); actual != expectedDigest {
+		tempFile.Close()
+		return fmt.Errorf("SHA-256 verification failed for %s", binaryName)
 	}
-	if err := copyFile(tempFile.Name(), updatePath); err != nil {
-		return fmt.Errorf("failed to create update file: %w", err)
+	if err := tempFile.Sync(); err != nil {
+		tempFile.Close()
+		return fmt.Errorf("failed to sync update file: %w", err)
 	}
-
-	return replaceBinary(execPath, updatePath, backupPath, scriptPath)
-}
-
-func replaceBinary(execPath, updatePath, backupPath, scriptPath string) error {
-	scriptContent := fmt.Sprintf(`#!/bin/bash
-set -e
-echo "Waiting for old process to exit..."
-
-while lsof "%[1]s" &>/dev/null; do
-    sleep 1
-done
-
-echo "Replacing old binary..."
-mv "%[1]s" "%[2]s" 2>/dev/null || true
-mv "%[3]s" "%[1]s"
-chmod +x "%[1]s"
-
-echo "Cleaning up..."
-rm -f "%[2]s" "%[3]s" "%[4]s"
-
-echo "Update complete."
-`, execPath, backupPath, updatePath, scriptPath)
-
-	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
-		os.Remove(updatePath)
-		return fmt.Errorf("failed to create update script: %w", err)
+	if err := tempFile.Close(); err != nil {
+		return fmt.Errorf("failed to close update file: %w", err)
+	}
+	if err := os.Chmod(tempPath, currentInfo.Mode().Perm()); err != nil {
+		return fmt.Errorf("failed to make update executable: %w", err)
 	}
 
-	cmd := exec.Command("/bin/bash", scriptPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	// Start the script and exit immediately
-	if err := cmd.Start(); err != nil {
-		os.Remove(scriptPath)
-		return fmt.Errorf("failed to start update script: %w", err)
+	versionOutput, err := exec.CommandContext(ctx, tempPath, "--version").Output()
+	if err != nil {
+		return fmt.Errorf("downloaded binary failed its version check: %w", err)
+	}
+	if got, want := normalizeVersion(strings.TrimSpace(string(versionOutput))), normalizeVersion(release.TagName); got != want {
+		return fmt.Errorf("downloaded binary reports version %q, expected %q", got, want)
 	}
 
-	fmt.Println("Update will complete after the program exits...")
-	os.Exit(0)
+	if err := os.Rename(tempPath, execPath); err != nil {
+		return fmt.Errorf("failed to atomically replace executable: %w", err)
+	}
+	if dir, err := os.Open(filepath.Dir(execPath)); err == nil {
+		_ = dir.Sync()
+		_ = dir.Close()
+	}
 	return nil
 }
 
-func getDownloadURL(ctx context.Context, version, binaryName string) (string, error) {
-	client := &http.Client{
-		Timeout: 30 * time.Second,
+func releaseBinaryName(goos, goarch string) (string, error) {
+	switch goos + "/" + goarch {
+	case "linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64":
+		return fmt.Sprintf("maniplacer-%s-%s", goos, goarch), nil
+	case "windows/amd64":
+		return "maniplacer-windows-amd64.exe", nil
+	default:
+		return "", fmt.Errorf("unsupported platform %s/%s", goos, goarch)
 	}
-
-	url := fmt.Sprintf("https://api.github.com/repos/dantedelordran/maniplacer/releases/tags/%s", version)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("User-Agent", "maniplacer/"+utils.Version)
-
-	res, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to get release info: %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub API returned status %d", res.StatusCode)
-	}
-
-	var release GitHubRelease
-	if err := json.NewDecoder(res.Body).Decode(&release); err != nil {
-		return "", fmt.Errorf("failed to decode release info: %w", err)
-	}
-
-	for _, asset := range release.Assets {
-		if asset.Name == binaryName {
-			return asset.BrowserDownloadURL, nil
-		}
-	}
-
-	return "", fmt.Errorf("binary %s not found in release assets", binaryName)
 }
 
-func copyFile(src, dst string) error {
-	sourceFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer sourceFile.Close()
+var semanticVersionPattern = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$`)
 
-	destFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer destFile.Close()
+func normalizeVersion(version string) string {
+	return strings.TrimPrefix(strings.TrimSpace(version), "v")
+}
 
-	_, err = io.Copy(destFile, sourceFile)
-	if err != nil {
-		return err
+func isNewerVersion(current, latest string) (bool, error) {
+	latestParts, ok := parseSemanticVersion(latest)
+	if !ok {
+		return false, fmt.Errorf("latest release has invalid semantic version %q", latest)
 	}
-
-	sourceInfo, err := sourceFile.Stat()
-	if err != nil {
-		return err
+	currentParts, ok := parseSemanticVersion(current)
+	if !ok {
+		return true, nil
 	}
+	for i := range latestParts {
+		if latestParts[i] != currentParts[i] {
+			return latestParts[i] > currentParts[i], nil
+		}
+	}
+	return false, nil
+}
 
-	return os.Chmod(dst, sourceInfo.Mode())
+func parseSemanticVersion(version string) ([3]int, bool) {
+	var result [3]int
+	matches := semanticVersionPattern.FindStringSubmatch(strings.TrimSpace(version))
+	if matches == nil {
+		return result, false
+	}
+	for i := range result {
+		part, err := strconv.Atoi(matches[i+1])
+		if err != nil {
+			return result, false
+		}
+		result[i] = part
+	}
+	return result, true
 }

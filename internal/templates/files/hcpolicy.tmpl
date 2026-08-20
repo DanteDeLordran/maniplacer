@@ -1,8 +1,8 @@
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
-metadata: 
-  name: ""
-  namespace: ""
+metadata:
+  name: {{ .name | Quote }}
+  namespace: {{ .namespace | Quote }}
 spec:
   default:
     checkIntervalSec: 30
@@ -11,7 +11,7 @@ spec:
     config:
       httpHealthCheck:
         portSpecification: USE_SERVING_PORT
-        requestPath: ""
+        requestPath: {{ .healthPath | Quote }}
       type: HTTP
     healthyThreshold: 1
     timeoutSec: 5
@@ -19,4 +19,4 @@ spec:
   targetRef:
     group: ""
     kind: Service
-    name: ""
+    name: {{ .name | Quote }}

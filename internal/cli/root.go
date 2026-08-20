@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/dantedelordran/maniplacer/internal/utils"
 	"github.com/spf13/cobra"
@@ -20,6 +22,7 @@ It generates the manifest in your local project in order for you to apply or sto
 	// help text after it; Execute reports the error once instead.
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	Version:       utils.Version,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Initialize logger with context
 		cmd.SetContext(utils.ContextWithLogger(cmd.Context(), utils.Logger()))
@@ -27,13 +30,16 @@ It generates the manifest in your local project in order for you to apply or sto
 }
 
 func Execute() {
-	if err := rootCmd.ExecuteContext(context.Background()); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
 }
 
 func init() {
+	rootCmd.SetVersionTemplate("{{.Version}}\n")
 	// Enable shell completion
 	rootCmd.CompletionOptions.DisableDefaultCmd = false
 }

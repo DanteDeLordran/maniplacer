@@ -1,287 +1,311 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-# Configuration
+umask 077
+
 TOOL_NAME="maniplacer"
-REPO_URL="https://github.com/dantedelordran/maniplacer"
-INSTALL_DIR="$HOME/.local/bin"
-TEMP_DIR="/tmp/maniplacer-install"
+API_URL="https://api.github.com/repos/dantedelordran/maniplacer/releases/latest"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
+TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/maniplacer-install.XXXXXX")"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Helper functions
-info() {
-    echo -e "${BLUE}ℹ️  $1${NC}"
+cleanup() {
+    rm -rf -- "$TEMP_DIR"
 }
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-success() {
-    echo -e "${GREEN}✅ $1${NC}"
+info() {
+    printf 'info: %s\n' "$1"
 }
 
 warning() {
-    echo -e "${YELLOW}⚠️  $1${NC}"
+    printf 'warning: %s\n' "$1" >&2
 }
 
 error() {
-    echo -e "${RED}❌ $1${NC}"
+    printf 'error: %s\n' "$1" >&2
     exit 1
 }
 
-# Check if command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Cleanup on exit
-cleanup() {
-    [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
-}
-trap cleanup EXIT
+CURL_OPTIONS=(
+    --fail
+    --location
+    --silent
+    --show-error
+    --connect-timeout "${MANIPLACER_CONNECT_TIMEOUT:-10}"
+    --max-time "${MANIPLACER_MAX_TIME:-120}"
+)
 
-# Check prerequisites
 check_prerequisites() {
-    info "Checking prerequisites..."
+    command_exists curl || error "curl is required"
 
-    if ! command_exists curl; then
-        error "curl is required but not installed. Please install curl and try again."
+    local curl_help
+    curl_help="$(curl --help all 2>/dev/null || true)"
+    if [[ "$curl_help" == *"--proto"* ]]; then
+        CURL_OPTIONS+=(--proto '=https')
     fi
 
-    if ! command_exists grep; then
-        error "grep is required but not installed."
+    if ! command_exists jq && ! command_exists python3 && ! perl -MJSON::PP -e 1 >/dev/null 2>&1; then
+        error "release metadata requires jq, python3, or Perl with JSON::PP"
     fi
 
-    if ! command_exists sed; then
-        error "sed is required but not installed."
+    if ! command_exists sha256sum && ! command_exists shasum && ! command_exists openssl; then
+        error "SHA-256 verification requires sha256sum, shasum, or openssl"
     fi
-
-    success "All prerequisites satisfied"
 }
 
-# Detect OS and architecture
 detect_platform() {
-    info "Detecting platform..."
+    local raw_os raw_arch
+    raw_os="$(uname -s)"
+    raw_arch="$(uname -m)"
 
-    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-    ARCH=$(uname -m)
-
-    # Map OS names
-    case "$OS" in
-        "linux") OS="linux" ;;
-        "darwin") OS="darwin" ;;
-        "mingw"*|"msys"*|"cygwin"*) OS="windows" ;;
-        *) error "Unsupported OS: $OS" ;;
+    case "$raw_os" in
+        Linux) OS="linux" ;;
+        Darwin) OS="darwin" ;;
+        MINGW*|MSYS*|CYGWIN*) OS="windows" ;;
+        *) error "unsupported operating system: $raw_os" ;;
     esac
 
-    # Map architecture naming
-    case "$ARCH" in
-        "x86_64"|"amd64") ARCH="amd64" ;;
-        "arm64"|"aarch64") ARCH="arm64" ;;
-        "i386"|"i686") ARCH="386" ;;
-        *) warning "Unknown architecture: $ARCH, defaulting to amd64"; ARCH="amd64" ;;
+    case "$raw_arch" in
+        x86_64|amd64) ARCH="amd64" ;;
+        arm64|aarch64) ARCH="arm64" ;;
+        *) error "unsupported architecture: $raw_arch" ;;
     esac
 
-    # Set binary name with extension for Windows
-    BINARY_NAME="maniplacer-${OS}-${ARCH}"
-    if [ "$OS" = "windows" ]; then
+    case "$OS/$ARCH" in
+        linux/amd64|linux/arm64|darwin/amd64|darwin/arm64|windows/amd64) ;;
+        *) error "unsupported platform: $OS/$ARCH" ;;
+    esac
+
+    BINARY_NAME="$TOOL_NAME-$OS-$ARCH"
+    INSTALLED_NAME="$TOOL_NAME"
+    if [[ "$OS" == "windows" ]]; then
         BINARY_NAME="${BINARY_NAME}.exe"
+        INSTALLED_NAME="${INSTALLED_NAME}.exe"
     fi
 
-    info "Platform detected: $OS/$ARCH"
+    info "detected platform $OS/$ARCH"
 }
 
-# Get latest release version
-get_latest_version() {
-    info "Fetching latest version from GitHub..."
+parse_release_metadata() {
+    local input="$1" output="$2"
 
-    # Try to get latest version with better error handling
-    LATEST_VERSION=$(curl -s --fail "https://api.github.com/repos/dantedelordran/maniplacer/releases/latest" | \
-        grep '"tag_name":' | \
-        sed -E 's/.*"([^"]+)".*/\1/' | \
-        tr -d '\n\r')
+    if command_exists jq; then
+        jq -er '.tag_name, (.assets[] | [.name, (.digest // ""), .browser_download_url] | join("\u001c"))' \
+            "$input" > "$output"
+    elif command_exists python3; then
+        python3 - "$input" "$output" <<'PY'
+import json
+import sys
 
-    if [ -z "$LATEST_VERSION" ]; then
-        error "Failed to fetch latest version from GitHub API"
+with open(sys.argv[1], encoding="utf-8") as source:
+    release = json.load(source)
+with open(sys.argv[2], "w", encoding="utf-8") as target:
+    print(release["tag_name"], file=target)
+    for asset in release["assets"]:
+        print(asset["name"], asset.get("digest") or "", asset["browser_download_url"], sep="\x1c", file=target)
+PY
+    else
+        perl -MJSON::PP -0777 -e '
+            my $release = decode_json(<>);
+            print "$release->{tag_name}\n";
+            for my $asset (@{$release->{assets}}) {
+                print join("\x1c", $asset->{name}, $asset->{digest} // "", $asset->{browser_download_url}), "\n";
+            }
+        ' "$input" > "$output"
     fi
-
-    info "Latest version: $LATEST_VERSION"
 }
 
-# Check if already installed and get version
-check_existing_installation() {
-    if command_exists "$TOOL_NAME"; then
-        CURRENT_VERSION=$($TOOL_NAME --version 2>/dev/null || echo "unknown")
-        warning "$TOOL_NAME is already installed (version: $CURRENT_VERSION)"
+get_release() {
+    local metadata="$TEMP_DIR/release.json"
+    local parsed="$TEMP_DIR/release.tsv"
+    local name digest url
 
-        # Remove 'v' prefix for comparison if present
-        CLEAN_LATEST=${LATEST_VERSION#v}
-        CLEAN_CURRENT=${CURRENT_VERSION#v}
+    info "fetching latest release metadata"
+    curl "${CURL_OPTIONS[@]}" --output "$metadata" "$API_URL"
+    parse_release_metadata "$metadata" "$parsed" || error "invalid GitHub release metadata"
 
-        if [ "$CLEAN_CURRENT" = "$CLEAN_LATEST" ]; then
-            info "You already have the latest version installed."
+    IFS= read -r LATEST_VERSION < "$parsed"
+    [[ -n "$LATEST_VERSION" ]] || error "release metadata has no tag"
 
-            # Check if running in non-interactive mode (piped from curl)
-            if [ -t 0 ]; then
-                # Interactive mode - ask user
-                read -p "Do you want to reinstall? (y/N): " -r
-                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                    info "Installation cancelled."
-                    exit 0
-                fi
-            else
-                # Non-interactive mode - proceed with reinstall
-                info "Non-interactive mode detected. Proceeding with reinstall..."
+    DOWNLOAD_URL=""
+    EXPECTED_DIGEST=""
+    CHECKSUM_URL=""
+    {
+        IFS= read -r _
+        while IFS=$'\034' read -r name digest url; do
+            if [[ "$name" == "$BINARY_NAME" ]]; then
+                DOWNLOAD_URL="$url"
+                EXPECTED_DIGEST="${digest#sha256:}"
             fi
-        fi
-    fi
+            case "$name" in
+                checksums.txt|sha256sums.txt|SHA256SUMS|maniplacer-checksums.txt)
+                    CHECKSUM_URL="$url"
+                    ;;
+            esac
+        done
+    } < "$parsed"
+
+    [[ -n "$DOWNLOAD_URL" ]] || error "release $LATEST_VERSION has no asset named $BINARY_NAME"
+    info "latest version is $LATEST_VERSION"
 }
 
-# Download binary
-download_binary() {
-    info "Creating temporary directory..."
-    mkdir -p "$TEMP_DIR"
-
-    # Construct download URL
-    DOWNLOAD_URL="$REPO_URL/releases/download/$LATEST_VERSION/$BINARY_NAME"
-
-    info "Downloading $TOOL_NAME $LATEST_VERSION ($OS/$ARCH)..."
-    info "Download URL: $DOWNLOAD_URL"
-
-    # Download with progress bar and better error handling
-    if ! curl -L --fail --progress-bar "$DOWNLOAD_URL" -o "$TEMP_DIR/$TOOL_NAME"; then
-        error "Download failed. Please check if the release exists for your platform."
-    fi
-
-    # Verify download
-    if [ ! -f "$TEMP_DIR/$TOOL_NAME" ]; then
-        error "Downloaded file not found"
-    fi
-
-    # Check if file is actually downloaded (not empty)
-    if [ ! -s "$TEMP_DIR/$TOOL_NAME" ]; then
-        error "Downloaded file is empty"
-    fi
-
-    success "Download completed"
-}
-
-# Install binary
-install_binary() {
-    info "Installing $TOOL_NAME..."
-
-    # Create install directory
-    mkdir -p "$INSTALL_DIR"
-
-    # Make executable
-    chmod +x "$TEMP_DIR/$TOOL_NAME"
-
-    # Move to install directory
-    mv "$TEMP_DIR/$TOOL_NAME" "$INSTALL_DIR/"
-
-    success "Binary installed to $INSTALL_DIR/$TOOL_NAME"
-}
-
-# Update PATH
-update_path() {
-    # Check if already in PATH
-    if [[ ":$PATH:" == *":$INSTALL_DIR:"* ]]; then
-        info "$INSTALL_DIR is already in PATH"
+check_existing_installation() {
+    local current clean_current clean_latest reply
+    if ! command_exists "$TOOL_NAME"; then
         return
     fi
 
-    info "Adding $INSTALL_DIR to PATH..."
+    current="$("$TOOL_NAME" --version 2>/dev/null || true)"
+    warning "$TOOL_NAME is already installed (version: ${current:-unknown})"
+    clean_current="${current#v}"
+    clean_latest="${LATEST_VERSION#v}"
+    if [[ "$clean_current" != "$clean_latest" ]]; then
+        return
+    fi
 
-    # Detect shell and update appropriate RC file
-    SHELL_NAME=$(basename "$SHELL")
-    RC_FILE=""
+    if [[ -t 0 ]]; then
+        read -r -p "Reinstall the same version? (y/N): " reply
+        [[ "$reply" =~ ^[Yy]$ ]] || exit 0
+    else
+        info "reinstalling in non-interactive mode"
+    fi
+}
 
-    case "$SHELL_NAME" in
-        "bash")
-            if [ -f "$HOME/.bashrc" ]; then
-                RC_FILE="$HOME/.bashrc"
-            elif [ -f "$HOME/.bash_profile" ]; then
-                RC_FILE="$HOME/.bash_profile"
+calculate_sha256() {
+    local file="$1"
+    if command_exists sha256sum; then
+        sha256sum "$file" | awk '{print $1}'
+    elif command_exists shasum; then
+        shasum -a 256 "$file" | awk '{print $1}'
+    else
+        openssl dgst -sha256 "$file" | awk '{print $NF}'
+    fi
+}
+
+checksum_from_release_asset() {
+    local checksum_file="$TEMP_DIR/checksums.txt"
+    curl "${CURL_OPTIONS[@]}" --output "$checksum_file" "$CHECKSUM_URL"
+    awk -v target="$BINARY_NAME" '
+        NF >= 2 {
+            name = $2
+            sub(/^\*/, "", name)
+            if (name == target) { print $1; exit }
+        }
+        $1 == "SHA256" && $2 == "(" target ")" && $3 == "=" { print $4; exit }
+    ' "$checksum_file"
+}
+
+verify_download() {
+    local file="$1" actual
+
+    if [[ -n "$CHECKSUM_URL" ]]; then
+        EXPECTED_DIGEST="$(checksum_from_release_asset)"
+        [[ -n "$EXPECTED_DIGEST" ]] || error "checksum asset has no entry for $BINARY_NAME"
+    fi
+
+    EXPECTED_DIGEST="$(printf '%s' "$EXPECTED_DIGEST" | tr '[:upper:]' '[:lower:]')"
+    [[ "$EXPECTED_DIGEST" =~ ^[0-9a-f]{64}$ ]] || error "release has no valid SHA-256 digest for $BINARY_NAME"
+
+    actual="$(calculate_sha256 "$file")"
+    actual="$(printf '%s' "$actual" | tr '[:upper:]' '[:lower:]')"
+    [[ "$actual" == "$EXPECTED_DIGEST" ]] || error "SHA-256 verification failed for $BINARY_NAME"
+    info "verified SHA-256 checksum"
+}
+
+download_binary() {
+    DOWNLOADED_FILE="$TEMP_DIR/$BINARY_NAME"
+    info "downloading $BINARY_NAME"
+    curl "${CURL_OPTIONS[@]}" --output "$DOWNLOADED_FILE" "$DOWNLOAD_URL"
+    [[ -s "$DOWNLOADED_FILE" ]] || error "downloaded asset is empty"
+    verify_download "$DOWNLOADED_FILE"
+}
+
+install_binary() {
+    [[ "$INSTALL_DIR" != *$'\n'* && "$INSTALL_DIR" != *$'\r'* ]] || error "INSTALL_DIR contains a newline"
+    mkdir -p -- "$INSTALL_DIR"
+    chmod 0755 "$DOWNLOADED_FILE"
+    mv -f -- "$DOWNLOADED_FILE" "$INSTALL_DIR/$INSTALLED_NAME"
+    info "installed $INSTALL_DIR/$INSTALLED_NAME"
+}
+
+shell_quote() {
+    local value="$1"
+    printf '%q' "$value"
+}
+
+file_has_line() {
+    local file="$1" expected="$2" line
+    [[ -f "$file" ]] || return 1
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" == "$expected" ]] && return 0
+    done < "$file"
+    return 1
+}
+
+update_path() {
+    local marker="# Added by maniplacer installer: $INSTALL_DIR"
+    local shell_name="${SHELL##*/}" rc_file="" quoted_dir
+
+    [[ "${MANIPLACER_NO_MODIFY_PATH:-0}" =~ ^(1|true|yes)$ ]] && {
+        info "skipping PATH modification because MANIPLACER_NO_MODIFY_PATH is set"
+        return
+    }
+    case ":$PATH:" in
+        *":$INSTALL_DIR:"*) return ;;
+    esac
+
+    quoted_dir="$(shell_quote "$INSTALL_DIR")"
+    case "$shell_name" in
+        bash) rc_file="$HOME/.bashrc" ;;
+        zsh) rc_file="$HOME/.zshrc" ;;
+        fish)
+            rc_file="$HOME/.config/fish/conf.d/maniplacer.fish"
+            mkdir -p -- "${rc_file%/*}"
+            if ! file_has_line "$rc_file" "$marker"; then
+                printf '\n%s\nfish_add_path -- %s\n' "$marker" "$quoted_dir" >> "$rc_file"
             fi
+            info "PATH configured in $rc_file"
+            return
             ;;
-        "zsh")
-            RC_FILE="$HOME/.zshrc"
-            ;;
-        "fish")
-            # Fish uses a different syntax
-            if [ -d "$HOME/.config/fish" ]; then
-                mkdir -p "$HOME/.config/fish/conf.d"
-                echo "set -gx PATH $INSTALL_DIR \$PATH" > "$HOME/.config/fish/conf.d/maniplacer.fish"
-                info "Added to Fish configuration"
-                return
-            fi
+        *)
+            warning "could not determine a shell startup file; add $INSTALL_DIR to PATH manually"
+            return
             ;;
     esac
 
-    if [ -n "$RC_FILE" ]; then
-        # Check if the export line already exists
-        if ! grep -q "export PATH.*$INSTALL_DIR" "$RC_FILE" 2>/dev/null; then
-            echo "" >> "$RC_FILE"
-            echo "# Added by maniplacer installer" >> "$RC_FILE"
-            echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> "$RC_FILE"
-            info "Added to $RC_FILE"
-        else
-            info "PATH already configured in $RC_FILE"
-        fi
-    else
-        warning "Could not determine shell RC file. Please manually add $INSTALL_DIR to your PATH."
+    if ! file_has_line "$rc_file" "$marker"; then
+        printf '\n%s\nexport PATH=%s:"%s"\n' "$marker" "$quoted_dir" "\$PATH" >> "$rc_file"
     fi
+    info "PATH configured in $rc_file"
 }
 
-# Verify installation
 verify_installation() {
-    info "Verifying installation..."
-
-    # Add to current PATH for verification
-    export PATH="$INSTALL_DIR:$PATH"
-
-    if ! command_exists "$TOOL_NAME"; then
-        error "Installation verification failed. $TOOL_NAME not found in PATH."
-    fi
-
-    # Test version command
-    VERSION_OUTPUT=$($TOOL_NAME version 2>/dev/null || echo "")
-    if [ -z "$VERSION_OUTPUT" ]; then
-        warning "Could not verify version, but binary is installed"
-    else
-        info "Installed version: $VERSION_OUTPUT"
-    fi
-
-    success "Installation verified successfully!"
+    local installed_version
+    installed_version="$("$INSTALL_DIR/$INSTALLED_NAME" --version)"
+    [[ "${installed_version#v}" == "${LATEST_VERSION#v}" ]] || \
+        error "installed version '$installed_version' does not match release '$LATEST_VERSION'"
+    info "verified installed version $installed_version"
 }
 
-# Main installation process
 main() {
-    echo "🚀 $TOOL_NAME Installer"
-    echo "========================"
-
     check_prerequisites
     detect_platform
-    get_latest_version
+    get_release
     check_existing_installation
     download_binary
     install_binary
     update_path
     verify_installation
-
-    echo ""
-    success "Successfully installed $TOOL_NAME $LATEST_VERSION!"
-    echo ""
-    info "Next steps:"
-    echo "  1. Restart your terminal or run: source ~/.bashrc (or ~/.zshrc)"
-    echo "  2. Verify installation: $TOOL_NAME --version"
-    echo "  3. Get started with: $TOOL_NAME --help"
-    echo ""
-    info "If you encounter any issues, please visit: $REPO_URL"
+    info "successfully installed $TOOL_NAME $LATEST_VERSION"
 }
 
-# Run main function
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: ""
-  namespace: ""
+  name: {{ .name | Quote }}
+  namespace: {{ .namespace | Quote }}
 data:
-  SOME_CONFIG=
+  APP_ENV: {{ .configValue | Quote }}

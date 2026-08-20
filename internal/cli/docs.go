@@ -1,157 +1,119 @@
 package cli
 
 import (
+	"context"
+	_ "embed"
+	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/dantedelordran/maniplacer/internal/utils"
 	"github.com/spf13/cobra"
 )
 
+//go:embed docs.html
+var docsPage []byte
+
 var docsCmd = &cobra.Command{
 	Use:   "docs",
-	Short: "Documentation and examples for Maniplacer",
-	Long: `The docs command launches a lightweight local web server that serves Maniplacer's documentation and template examples.
+	Short: "Serve Maniplacer documentation locally",
+	Long: `The docs command serves Maniplacer's documentation from a loopback-only HTTP server.
 
-By default, the server runs on port 8000, but you can override this with the --port (or -p) flag.
-Once started, the documentation is available at http://localhost:<port>/docs, where you can explore built-in functions, templating syntax, and practical usage examples.
+By default, the server uses port 8000. Override it with --port (or -p), then
+open the reported /docs/ URL in a browser.
 
-This feature is useful when you want quick access to examples without leaving your terminal environment or searching external docs.
-It provides live, interactive reference material for customizing Kubernetes component manifests with Maniplacer's template engine.
-
-Example usage:
-  maniplacer docs -p 9000
-
-This will start the documentation server on port 9000, and you can access it at:
-  http://localhost:9000/docs`,
-	Args: cobra.MaximumNArgs(0),
+Example:
+  maniplacer docs --port 9000`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		port, err := cmd.Flags().GetString("port")
+		portValue, err := cmd.Flags().GetString("port")
 		if err != nil {
-			return fmt.Errorf("could not parse port flag, using default: %w", err)
+			return fmt.Errorf("could not parse port flag: %w", err)
 		}
 
-		logger := utils.LoggerFromContext(cmd.Context())
-		logger.Info("starting documentation server", "port", port, "url", fmt.Sprintf("http://localhost:%s/docs", port))
-
-		fmt.Printf("Documentation server available in: http://localhost:%s/docs\n", port)
-
-		mux := http.NewServeMux()
-
-		mux.HandleFunc("GET /docs", func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte(page))
-		})
-
-		if err := http.ListenAndServe(fmt.Sprintf(":%s", port), mux); err != nil {
-			return fmt.Errorf("failed to start documentation server: %w", err)
+		port, err := parseDocsPort(portValue)
+		if err != nil {
+			return err
 		}
 
-		return nil
+		return runDocsServer(cmd.Context(), port, cmd.OutOrStdout())
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(docsCmd)
-	docsCmd.Flags().StringP("port", "p", utils.DefaultPort, "Port for serving docs page")
+	docsCmd.Flags().StringP("port", "p", utils.DefaultPort, "Port for serving the docs page (1-65535)")
 }
 
-var page = `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Maniplacer Docs</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 900px;
-      margin: 2rem auto;
-      line-height: 1.6;
-    }
-    h1, h2 {
-      color: #2c3e50;
-    }
-    pre {
-      background: #f4f4f4;
-      padding: 12px;
-      border-radius: 8px;
-      overflow-x: auto;
-    }
-    code {
-      font-family: monospace;
-    }
-    .explanation {
-      background: #eef6ff;
-      padding: 10px;
-      border-left: 4px solid #3498db;
-      margin-bottom: 1rem;
-    }
-    ul {
-      background: #fafafa;
-      padding: 10px 20px;
-      border-left: 4px solid #27ae60;
-      border-radius: 6px;
-    }
-    li {
-      margin-bottom: 8px;
-    }
-  </style>
-</head>
-<body>
-  <h1>📘 Maniplacer Examples</h1>
+func parseDocsPort(value string) (int, error) {
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, fmt.Errorf("invalid port %q: must be an integer from 1 to 65535", value)
+	}
+	return port, nil
+}
 
-  <hr>
+func docsHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/docs/", http.StatusTemporaryRedirect)
+	})
+	mux.HandleFunc("GET /docs", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/docs/", http.StatusTemporaryRedirect)
+	})
+	mux.HandleFunc("GET /docs/{$}", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(docsPage)
+	})
+	return mux
+}
 
-  <h2>Template example</h2>
-  <pre><code>apiVersion: v1
-kind: Secret
-metadata:
-  name: {{ .name }}
-  namespace: {{ .namespace }}
-type: Opaque
-data:
-  {{- range $key, $value := .secrets }}
-  {{ $key }} : {{ $value | Base64 | Quote }}
-  {{- end }}</code></pre>
+func runDocsServer(ctx context.Context, port int, output io.Writer) error {
+	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	if err != nil {
+		return fmt.Errorf("failed to bind documentation server: %w", err)
+	}
 
-  <div class="explanation">
-    <p><b>Why <code>range</code>?</b></p>
-    <p>
-      The <code>range</code> command loops over a collection.
-      In this case, <code>.secrets</code> is a map of key–value pairs.
-      Each iteration assigns the map key to <code>$key</code> and the value to <code>$value</code>,
-      allowing us to output each secret entry as YAML.
-    </p>
+	server := &http.Server{
+		Handler:           docsHandler(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		BaseContext: func(net.Listener) context.Context {
+			return ctx
+		},
+	}
 
-    <p><b>What does the <code>|</code> operator do?</b></p>
-    <p>
-      The pipe operator <code>|</code> passes the output of one function into another, like in Unix shells.
-      For example:
-      <code>{{ $value | Base64 | Quote }}</code>
-      means:
-      1. Take <code>$value</code>
-      2. Encode it with <code>Base64</code>
-      3. Then pass the result into <code>Quote</code> to wrap it in quotes.
-    </p>
-  </div>
+	url := fmt.Sprintf("http://127.0.0.1:%d/docs/", port)
+	utils.LoggerFromContext(ctx).Info("starting documentation server", "url", url)
+	fmt.Fprintf(output, "Documentation server available at: %s\n", url)
 
-  <hr>
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- server.Serve(listener)
+	}()
 
-  <h2>⚙️ Built-in Functions</h2>
-  <ul>
-    <li><b><code>Base64</code></b> – Encodes a string into Base64.
-      <br><i>Example:</i> <code>{{ "hello" | Base64 }}</code> → <code>aGVsbG8=</code></li>
-
-    <li><b><code>ToUpper</code></b> – Converts text to uppercase.
-      <br><i>Example:</i> <code>{{ "maniplacer" | ToUpper }}</code> → <code>MANIPLACER</code></li>
-
-    <li><b><code>ToLower</code></b> – Converts text to lowercase.
-      <br><i>Example:</i> <code>{{ "KUBERNETES" | ToLower }}</code> → <code>kubernetes</code></li>
-
-    <li><b><code>Quote</code></b> – Wraps text in quotes.
-      <br><i>Example:</i> <code>{{ "world" | Quote }}</code> → <code>"world"</code></li>
-  </ul>
-
-</body>
-</html>
-`
+	select {
+	case err := <-serveErr:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return fmt.Errorf("documentation server failed: %w", err)
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			_ = server.Close()
+			return fmt.Errorf("failed to shut down documentation server: %w", err)
+		}
+		if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("documentation server failed during shutdown: %w", err)
+		}
+		return nil
+	}
+}

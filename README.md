@@ -1,19 +1,18 @@
 # Maniplacer
 
-A powerful Kubernetes manifest templating tool that simplifies the creation and management of K8s resources through customizable templates and configuration-driven generation.
+A Kubernetes manifest templating tool for creating repeatable manifests from Go templates and configuration files.
 
 ## Overview
 
 Maniplacer helps you manage Kubernetes manifests efficiently by:
 - **Scaffolding** new component templates with sensible defaults
 - **Templating** manifests using Go's template engine with custom functions
-- **Generating** production-ready manifests from configuration files
+- **Generating** validated YAML manifests from configuration files
 - **Organizing** resources by namespace and repository structure
 
 ## Project Status
 
-- **Latest tagged release**: `1.3.15`
-- **Active development branch reviewed**: `develop`
+- **Latest tagged release**: `1.4.0`
 - **Runtime and tooling**: Go `1.25`, Cobra CLI, Kubernetes `client-go`
 - **Implemented commands**: `init`, `new`, `add`, `remove`, `generate`, `list`, `prune`, `docs`, `update`, `version`, `completion`, and `apply`
 - **In progress**: `deployed` is registered but currently a placeholder
@@ -27,52 +26,69 @@ Maniplacer helps you manage Kubernetes manifests efficiently by:
 - **Cluster Apply**: Apply the latest generated manifests to a Kubernetes cluster
 - **Multi-format Support**: Works with JSON and YAML configuration files
 - **Built-in Documentation**: Local documentation server with examples
-- **Timestamped Outputs**: Each generation creates a unique timestamped folder
+- **Timestamped Outputs**: Each generation writes to a timestamped folder
 - **Cleanup Tools**: Prune manifests and remove templates easily
 - **Self-updating**: Update to latest version from GitHub releases
-- **Security Hardened**: Path traversal protection, input validation, K8s naming conventions
-- **Test Coverage**: Comprehensive unit tests for core functionality
+- **Input Validation**: Repository, namespace, component, and rendered YAML validation
+- **Test Coverage**: Unit tests for configuration, rendering, templates, updates, and documentation
 - **Shell Completion**: Auto-completion for bash, zsh, fish, powershell
-- **Dry-Run Mode**: Preview generation without writing files
+- **Dry-Run Mode**: Validate generation without writing files
 
 ## Installation
 
-### Via Curl (Recommended)
+### Installer
+
+Download the installer so you can inspect it before running it:
+
 ```bash
-curl -fsSL https://raw.github.com/dantedelordran/maniplacer/main/installer.sh | bash
+curl -fsSLo /tmp/maniplacer-installer.sh \
+  https://raw.githubusercontent.com/dantedelordran/maniplacer/main/installer.sh
+bash /tmp/maniplacer-installer.sh
 ```
+
+The installer supports Linux and macOS on AMD64/ARM64, plus Windows AMD64 from
+Git Bash. It verifies the release asset's SHA-256 digest and installs to
+`~/.local/bin` by default. Set `INSTALL_DIR` to choose another destination or
+`MANIPLACER_NO_MODIFY_PATH=1` to leave shell startup files unchanged.
+
+It requires `curl`, a SHA-256 tool (`sha256sum`, `shasum`, or `openssl`), and one
+JSON parser (`jq`, `python3`, or Perl with `JSON::PP`).
 
 ### Via Source
 ```bash
 git clone https://github.com/dantedelordran/maniplacer.git
 cd maniplacer
 make build
+make install
 ```
 
 ### Build with Specific Version
 ```bash
-VERSION=1.3.15 make build
+VERSION=1.4.0 make build
 # or
-go build -ldflags "-X github.com/dantedelordran/maniplacer/internal/utils.Version=1.3.15" -o dist/maniplacer cmd/main.go
+go build -ldflags "-X github.com/dantedelordran/maniplacer/internal/utils.Version=1.4.0" -o dist/maniplacer ./cmd
 ```
 
 ### Docker
 ```bash
-docker build -t maniplacer:latest .
+docker build --build-arg VERSION=1.4.0 -t maniplacer:latest .
 docker run --rm -v $(pwd):/workspace maniplacer:latest version
 ```
 
 ## Quick Start
 
+This flow uses the generated `config.json`; it does not create a second config
+file or trigger an interactive format choice.
+
 ### 1. Initialize a Project
 
 ```bash
-# Create a new Maniplacer project in current directory
-maniplacer init
-
-# Or create a new project with a specific name
 maniplacer init my-k8s-project
+cd my-k8s-project
 ```
+
+When prompted to create a repository during `init`, answer `n`; the next step
+creates it explicitly.
 
 ### 2. Create a Repository
 
@@ -97,22 +113,24 @@ maniplacer add deployment service configmap -n production -r myapp
 # - hcpolicy      (Health Check Policy)
 ```
 
-### 4. Create Configuration
+### 4. Edit Configuration
 
-Create a `config.yaml` (or `config.json`) in your repository directory:
+`maniplacer new` creates `myapp/config.json` with the values used by the bundled
+templates. Update the application-specific values before generating:
 
-```yaml
-# config.yaml
-name: myapp
-namespace: production
-replicas: 3
-image: myapp:v1.2.3
-port: 8080
-
-secrets:
-  db_password: supersecret123
-  api_key: abc123xyz789
+```json
+{
+  "name": "myapp",
+  "namespace": "production",
+  "image": "ghcr.io/example/myapp:1.2.3",
+  "replicas": 3,
+  "containerPort": 8080,
+  "servicePort": 80,
+  "configValue": "production"
+}
 ```
+
+Keep the other generated keys when adding `hpa`, `httproute`, or `hcpolicy`.
 
 ### 5. Generate Manifests
 
@@ -120,13 +138,10 @@ secrets:
 # Generate manifests from templates
 maniplacer generate -n production -r myapp
 
-# Use specific config format
-maniplacer generate -f yaml -n production -r myapp
-
 # Use custom config file
 maniplacer generate -c custom-config.json -n production -r myapp
 
-# Preview without writing files (Dry-Run)
+# Validate without writing files
 maniplacer generate --dry-run -n production -r myapp
 ```
 
@@ -140,7 +155,7 @@ maniplacer apply myapp -n production
 ### 7. List Generated Manifests
 
 ```bash
-# List all manifests in a namespace
+# List generated versions in a namespace
 maniplacer list -n production -r myapp
 
 # List manifests in default namespace
@@ -153,7 +168,7 @@ maniplacer list -r myapp
 my-k8s-project/
 ├── .maniplacer              # Project marker file
 ├── myapp/                   # Repository directory
-│   ├── config.yaml          # Configuration values
+│   ├── config.json          # Configuration values
 │   ├── templates/           # Template definitions
 │   │   └── production/      # Namespace-specific templates
 │   │       ├── deployment.yaml
@@ -174,15 +189,12 @@ Maniplacer uses Go's powerful template engine with custom functions:
 ### Basic Templating
 ```yaml
 apiVersion: v1
-kind: Secret
+kind: ConfigMap
 metadata:
-  name: {{ .name }}
-  namespace: {{ .namespace }}
-type: Opaque
+  name: {{ .name | Quote }}
+  namespace: {{ .namespace | Quote }}
 data:
-  {{- range $key, $value := .secrets }}
-  {{ $key }}: {{ $value | Base64 | Quote }}
-  {{- end }}
+  APP_ENV: {{ .configValue | Quote }}
 ```
 
 ### Built-in Functions
@@ -190,6 +202,10 @@ data:
 - **`ToUpper`** - Convert to uppercase
 - **`ToLower`** - Convert to lowercase
 - **`Quote`** - Wrap in quotes
+
+`Base64` is encoding, not encryption. Do not commit credentials in configuration
+files or generated Secret manifests; use uncommitted input or an external secret
+manager.
 
 ### Example Usage
 ```yaml
@@ -219,8 +235,7 @@ maniplacer init my-k8s-project
 
 During initialization:
 - Creates project root and marks it as a valid Maniplacer project
-- Sets up required directories (templates/, manifests/)
-- Optionally creates a default repository with config.json
+- Optionally creates a repository with templates/, manifests/, and config.json
 
 ### `maniplacer new`
 Create a new repository within an existing Maniplacer project.
@@ -264,7 +279,7 @@ maniplacer generate -n production -f yaml -r myrepo
 # Use custom config file
 maniplacer generate -c /path/to/config.json -r myrepo
 
-# Preview without writing files
+# Validate without writing files
 maniplacer generate --dry-run -r myrepo
 
 # Allow templates to reference keys that are absent from the config
@@ -275,7 +290,7 @@ maniplacer generate --strict=false -r myrepo
 # -f, --format      Config format: json, yaml, yml (auto-detected if not specified)
 # -r, --repo        Repository name (required)
 # -c, --config      Custom path to config file (overrides default config file detection)
-# --dry-run         Preview generation without writing files
+# --dry-run         Validate generation without writing files
 # --strict          Fail on missing config keys and invalid YAML output (default: true)
 ```
 
@@ -302,7 +317,7 @@ maniplacer apply myrepo -n production
 The command reads from `<repo>/manifests/<namespace>/<latest-timestamp>/`, prompts before creating a missing namespace, and uses server-side apply with field manager `maniplacer`.
 
 ### `maniplacer list`
-Display all generated manifests in a specific namespace and repository.
+Display generated manifest versions in a specific namespace and repository.
 
 ```bash
 # List manifests in default namespace
@@ -360,11 +375,10 @@ maniplacer update --force
 # -f, --force       Skip confirmation prompt
 ```
 
-The update process:
-1. Fetches the latest release from GitHub
-2. Compares with current version
-3. Downloads appropriate binary for your OS/architecture
-4. Creates backup and replaces binary via update script
+The update process fetches the latest release, compares semantic versions,
+verifies the selected binary's GitHub-published SHA-256 digest, checks its
+embedded version, and atomically replaces the executable. Self-update supports
+Linux and macOS; Windows users should rerun the installer.
 
 ### `maniplacer docs`
 Launch local documentation server with examples and function reference.
@@ -380,7 +394,7 @@ maniplacer docs -p 9000
 # -p, --port        Server port (default: "8000")
 ```
 
-Access documentation at: `http://localhost:8000/docs`
+Access documentation at: `http://127.0.0.1:8000/docs/`
 
 ### `maniplacer version`
 Display the current version of Maniplacer.
@@ -418,10 +432,9 @@ Registered as a future status command. The current implementation is a placehold
   "namespace": "production",
   "replicas": 3,
   "image": "myapp:v1.2.3",
-  "secrets": {
-    "db_password": "supersecret123",
-    "api_key": "abc123xyz789"
-  }
+  "containerPort": 8080,
+  "servicePort": 80,
+  "configValue": "production"
 }
 ```
 
@@ -431,9 +444,9 @@ name: myapp
 namespace: production
 replicas: 3
 image: myapp:v1.2.3
-secrets:
-  db_password: supersecret123
-  api_key: abc123xyz789
+containerPort: 8080
+servicePort: 80
+configValue: production
 ```
 
 ## Smart Configuration Detection
@@ -562,7 +575,7 @@ cd maniplacer
 make build
 
 # Build with specific version
-VERSION=1.3.15 make build
+VERSION=1.4.0 make build
 
 # Build for all platforms
 make build-all
@@ -570,6 +583,75 @@ make build-all
 # Create release archive
 make release
 ```
+
+### Publishing a Release
+
+Releases are built from version tags after `develop` has been merged into
+`main`. The release workflow runs tests, builds and verifies every supported
+binary, creates checksums and provenance attestations, and publishes the GitHub
+release.
+
+#### 1. Push `develop`
+
+```bash
+git switch develop
+git push origin develop
+```
+
+This starts the CI workflow for `develop`.
+
+#### 2. Open and merge a pull request
+
+```bash
+gh pr create \
+  --base main \
+  --head develop \
+  --title "Release preparation for 1.5.0" \
+  --body "Prepare Maniplacer 1.5.0 for release."
+```
+
+Wait for all CI checks to pass, review the pull request, and merge it without
+deleting the long-lived `develop` branch:
+
+```bash
+gh pr merge --merge
+```
+
+You can also create and merge the pull request from the GitHub website.
+
+#### 3. Update local `main`
+
+```bash
+git switch main
+git pull --ff-only origin main
+git log --oneline -5
+```
+
+Confirm that the merged changes appear in the log before creating the tag.
+
+#### 4. Create and push the version tag
+
+Use semantic versioning and follow the repository's existing tag style without
+a `v` prefix:
+
+```bash
+git tag -a 1.5.0 -m "Maniplacer 1.5.0"
+git push origin 1.5.0
+```
+
+Pushing the tag starts `.github/workflows/release.yml`. The tagged commit is
+what gets built, so always create the tag from the updated `main` branch.
+
+#### 5. Monitor the release
+
+```bash
+gh run list --workflow=release.yml
+gh run watch
+gh release view 1.5.0
+```
+
+Do not run `gh release create` manually; the release workflow creates the
+release and uploads its assets.
 
 ### Run Tests
 
@@ -619,11 +701,11 @@ maniplacer/
 
 1. **Use descriptive repository names** - Name repos based on service or component (e.g., `frontend`, `api`, `database`)
 2. **Organize by namespaces** - Separate templates for different environments (`development`, `staging`, `production`)
-3. **Version control everything** - Keep templates, configs, and important generated manifests in git
+3. **Protect secrets** - Never commit plaintext credentials or generated Secret manifests
 4. **Test templates** - Generate manifests in development before deploying to production
 5. **Leverage template helpers** - Use built-in functions for common transformations
 6. **Clean regularly** - Use `prune` to remove old manifests and `remove` to clean up unused templates
-7. **Use dry-run first** - Preview changes with `--dry-run` before generating files
+7. **Use dry-run first** - Validate templates with `--dry-run` before generating files
 8. **Validate names** - Repository and namespace names follow Kubernetes naming conventions
 
 ## Troubleshooting

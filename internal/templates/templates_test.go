@@ -1,9 +1,16 @@
 package templates
 
 import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"text/template"
+
+	"github.com/dantedelordran/maniplacer/internal/utils"
+	"gopkg.in/yaml.v3"
 )
 
 func TestBase64Function(t *testing.T) {
@@ -190,5 +197,57 @@ func TestTemplateRegistry(t *testing.T) {
 		if len(tmpl) == 0 {
 			t.Errorf("Template for %s is empty", comp)
 		}
+	}
+}
+
+func TestBundledTemplatesStrictRenderWithStarterConfig(t *testing.T) {
+	dir := t.TempDir()
+	if err := utils.CreateConfigFile(dir, utils.FormatJSON); err != nil {
+		t.Fatalf("CreateConfigFile() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	if err != nil {
+		t.Fatalf("could not read starter config: %v", err)
+	}
+
+	var config map[string]any
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatalf("starter config is not valid JSON: %v", err)
+	}
+
+	for _, component := range AllowedComponents {
+		t.Run(component, func(t *testing.T) {
+			tmpl, err := template.New(component).
+				Funcs(ManiplacerFuncs).
+				Option("missingkey=error").
+				Parse(string(TemplateRegistry[component]))
+			if err != nil {
+				t.Fatalf("could not parse template: %v", err)
+			}
+
+			var rendered bytes.Buffer
+			if err := tmpl.Execute(&rendered, config); err != nil {
+				t.Fatalf("strict render failed: %v", err)
+			}
+			if strings.Contains(rendered.String(), "<no value>") {
+				t.Fatal("rendered template contains a missing value")
+			}
+
+			var manifest struct {
+				APIVersion string `yaml:"apiVersion"`
+				Kind       string `yaml:"kind"`
+				Metadata   struct {
+					Name      string `yaml:"name"`
+					Namespace string `yaml:"namespace"`
+				} `yaml:"metadata"`
+			}
+			if err := yaml.Unmarshal(rendered.Bytes(), &manifest); err != nil {
+				t.Fatalf("rendered output is not valid YAML: %v\n%s", err, rendered.String())
+			}
+			if manifest.APIVersion == "" || manifest.Kind == "" || manifest.Metadata.Name == "" || manifest.Metadata.Namespace == "" {
+				t.Fatalf("rendered manifest is missing required identity fields: %#v", manifest)
+			}
+		})
 	}
 }
