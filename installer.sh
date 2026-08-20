@@ -4,7 +4,6 @@ set -Eeuo pipefail
 umask 077
 
 TOOL_NAME="maniplacer"
-REPO_URL="https://github.com/dantedelordran/maniplacer"
 API_URL="https://api.github.com/repos/dantedelordran/maniplacer/releases/latest"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/maniplacer-install.XXXXXX")"
@@ -282,7 +281,7 @@ update_path() {
     esac
 
     if ! file_has_line "$rc_file" "$marker"; then
-        printf '\n%s\nexport PATH=%s:"$PATH"\n' "$marker" "$quoted_dir" >> "$rc_file"
+        printf '\n%s\nexport PATH=%s:"%s"\n' "$marker" "$quoted_dir" "\$PATH" >> "$rc_file"
     fi
     info "PATH configured in $rc_file"
 }

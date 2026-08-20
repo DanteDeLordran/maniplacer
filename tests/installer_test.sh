@@ -29,3 +29,4 @@ PATH=/usr/bin:/bin
 mkdir -p "$HOME"
 update_path
 file_has_line "$HOME/.zshrc" "# Added by maniplacer installer: $INSTALL_DIR"
+file_has_line "$HOME/.zshrc" "export PATH=$(shell_quote "$INSTALL_DIR"):\"\$PATH\""

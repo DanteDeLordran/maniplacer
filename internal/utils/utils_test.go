@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -160,7 +161,7 @@ func TestCreateManiplacerProject(t *testing.T) {
 		t.Fatalf("Could not stat marker file: %v", err)
 	}
 
-	if info.Mode().Perm() != FilePermission {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != FilePermission {
 		t.Errorf("Marker file permissions = %v, want %v", info.Mode().Perm(), FilePermission)
 	}
 }
