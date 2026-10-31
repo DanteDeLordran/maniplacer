@@ -19,6 +19,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// versionLayout names generated versions. Every version sorts chronologically by
+// name, and time.Parse with this layout also accepts the fractional seconds that
+// generate appends to keep rapid runs apart.
+const versionLayout = "2006-01-02_15-04-05"
+
 type ConfigFormat string
 
 const (
@@ -189,6 +194,19 @@ func ValidateConfig(config map[string]any) error {
 	return nil
 }
 
+// resolveConfigNamespace sets the .namespace template value to the target, so
+// rendered manifests agree with the directories they are read from and written
+// to. An explicit --namespace is a deliberate override; a config that disagrees
+// with the default target is an error rather than a silent redirect.
+func resolveConfigNamespace(config map[string]any, namespace string, explicit bool) error {
+	if configured, ok := config["namespace"]; ok && !explicit && configured != namespace {
+		return fmt.Errorf("config namespace '%v' does not match target namespace '%s': pass --namespace to choose one", configured, namespace)
+	}
+
+	config["namespace"] = namespace
+	return nil
+}
+
 var generateCmd = &cobra.Command{
 	Use:   "generate",
 	Short: "Generates the manifest given a config file and at least one template",
@@ -218,9 +236,10 @@ Example usage:
 Notes:
 - The current directory must be a valid Maniplacer project (contain a '.maniplacer' file).
 - The specified namespace must exist under the 'templates' directory.
-- Each run writes to a timestamped output folder.
+- Each run is published to a timestamped output folder only after every template succeeds, so a failed run leaves the previous version as the latest.
+- --namespace also sets the .namespace template value, overriding the config file. Without the flag, a config namespace other than the default is an error.
 - Use --dry-run to validate without writing files.
-- Generation is strict by default: a template referencing a key that is absent from the config is an error, and rendered output must be valid YAML. Pass --strict=false to fall back to the lenient behaviour.`,
+- Generation is strict by default: a template referencing a key that is absent from the config is an error, every rendered YAML document must be valid, and none may set a metadata.namespace other than the target. Pass --strict=false to fall back to the lenient behaviour.`,
 	Args: cobra.MaximumNArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		logger := utils.LoggerFromContext(cmd.Context())
@@ -345,15 +364,24 @@ Notes:
 
 		fmt.Printf("Successfully loaded configuration with %d top-level keys\n", len(config))
 
-		// Generate output directory with timestamp
-		timestamp := time.Now().Format("2006-01-02_15-04-05")
-		outputDir := filepath.Join(target.ManifestsDir(), timestamp)
+		if err := resolveConfigNamespace(config, target.Namespace, cmd.Flags().Changed("namespace")); err != nil {
+			return err
+		}
+
+		// Render into a staging directory that sits outside the namespace folders
+		// searched by apply, list, and prune, then publish it in a single rename.
+		version := time.Now().Format(versionLayout + ".000000000")
+		outputDir := filepath.Join(target.ManifestsDir(), version)
+		stagingDir := filepath.Join(filepath.Dir(target.ManifestsDir()), ".staging-"+version)
 
 		if !dryRun {
-			if err := os.MkdirAll(outputDir, utils.DirPermission); err != nil {
-				return fmt.Errorf("could not create output directory '%s': %w", outputDir, err)
+			if err := os.MkdirAll(target.ManifestsDir(), utils.DirPermission); err != nil {
+				return fmt.Errorf("could not create manifests directory '%s': %w", target.ManifestsDir(), err)
 			}
-			fmt.Printf("Output directory: %s\n", outputDir)
+			if err := os.Mkdir(stagingDir, utils.DirPermission); err != nil {
+				return fmt.Errorf("could not create staging directory '%s': %w", stagingDir, err)
+			}
+			defer os.RemoveAll(stagingDir)
 		} else {
 			fmt.Printf("Dry-run mode: no files will be written\n")
 		}
@@ -369,7 +397,7 @@ Notes:
 
 			templatePath := filepath.Join(templateDir, file.Name())
 
-			if err := processTemplate(cmd.Context(), templatePath, outputDir, file.Name(), config, dryRun, strict); err != nil {
+			if err := processTemplate(cmd.Context(), templatePath, stagingDir, file.Name(), config, target.Namespace, dryRun, strict); err != nil {
 				logger.Debug("failed to process template", "file", file.Name(), "error", err)
 				fmt.Printf("Warning: Failed to process template '%s': %s\n", file.Name(), err)
 				errorCount++
@@ -377,7 +405,7 @@ Notes:
 				if dryRun {
 					fmt.Printf("Would generate: %s\n", file.Name())
 				} else {
-					fmt.Printf("Generated: %s\n", filepath.Join(outputDir, file.Name()))
+					fmt.Printf("Generated: %s\n", file.Name())
 				}
 				successCount++
 			}
@@ -386,8 +414,17 @@ Notes:
 		fmt.Printf("\nGeneration complete: %d successful, %d errors\n", successCount, errorCount)
 
 		if errorCount > 0 {
-			return fmt.Errorf("generation completed with %d errors", errorCount)
+			return fmt.Errorf("generation completed with %d errors, no version was published", errorCount)
 		}
+
+		if dryRun {
+			return nil
+		}
+
+		if err := os.Rename(stagingDir, outputDir); err != nil {
+			return fmt.Errorf("could not publish version '%s': %w", version, err)
+		}
+		fmt.Printf("Output directory: %s\n", outputDir)
 
 		return nil
 	},
@@ -398,9 +435,9 @@ Notes:
 // can never leave a partial manifest behind.
 //
 // In strict mode a template that references a key missing from the config is an
-// error instead of silently rendering "<no value>", and the rendered output must
-// parse as YAML.
-func processTemplate(ctx context.Context, templatePath, outputDir, filename string, config map[string]any, dryRun, strict bool) error {
+// error instead of silently rendering "<no value>", every rendered document must
+// parse as YAML, and none may set a metadata.namespace other than namespace.
+func processTemplate(ctx context.Context, templatePath, outputDir, filename string, config map[string]any, namespace string, dryRun, strict bool) error {
 	logger := utils.LoggerFromContext(ctx)
 
 	content, err := os.ReadFile(templatePath)
@@ -424,9 +461,14 @@ func processTemplate(ctx context.Context, templatePath, outputDir, filename stri
 	}
 
 	if strict {
-		var doc any
-		if err := yaml.Unmarshal(rendered.Bytes(), &doc); err != nil {
+		objects, err := decodeManifests(rendered.Bytes())
+		if err != nil {
 			return fmt.Errorf("rendered output is not valid YAML: %w", err)
+		}
+		for _, obj := range objects {
+			if err := checkManifestNamespace(obj, namespace); err != nil {
+				return err
+			}
 		}
 	}
 
