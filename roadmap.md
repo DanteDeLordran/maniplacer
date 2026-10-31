@@ -57,26 +57,28 @@ also share an output directory.
 loop), `internal/cli/apply.go` (`getLatestManifest`),
 `internal/cli/generate_render_test.go`.
 
-- [ ] Render and validate the entire generation in a staging directory.
-- [ ] Keep staging directories outside the directories searched by `apply`, on the same filesystem as the final destination.
-- [ ] Publish the version with a directory rename only after every template succeeds.
-- [ ] Clean up staging files on failure or cancellation.
-- [ ] Give each generation a collision-resistant, chronologically sortable version identifier.
-- [ ] Ignore staging/non-version entries when selecting the latest version, while retaining support for existing timestamped versions.
-- [ ] Preserve the existing behavior of `generate --dry-run`: no output files or directories.
+- [x] Render and validate the entire generation in a staging directory.
+- [x] Keep staging directories outside the directories searched by `apply`, on the same filesystem as the final destination.
+- [x] Publish the version with a directory rename only after every template succeeds.
+- [x] Clean up staging files on failure or cancellation.
+- [x] Give each generation a collision-resistant, chronologically sortable version identifier.
+- [x] Ignore staging/non-version entries when selecting the latest version, while retaining support for existing timestamped versions.
+- [x] Preserve the existing behavior of `generate --dry-run`: no output files or directories.
 
 **Acceptance criteria**
 
-- [ ] A failure in any template leaves the previous complete version as the latest available version.
-- [ ] Two generations within the same second cannot overwrite or merge their outputs.
-- [ ] Successful generation publishes every expected manifest together.
-- [ ] Tests cover partial failure, version collisions, latest-version selection, and dry-run behavior.
+- [x] A failure in any template leaves the previous complete version as the latest available version.
+- [x] Two generations within the same second cannot overwrite or merge their outputs.
+- [x] Successful generation publishes every expected manifest together.
+- [x] Tests cover partial failure, version collisions, latest-version selection, and dry-run behavior.
 
 ## 2. Namespace resolution and config-file naming conventions
 
-**Problem:** `--namespace` currently selects template/output directories, while
-`.namespace` in the config controls the namespace in bundled manifests. These can
-disagree. Generation also selects the template directory before loading config.
+**Problem:** `--namespace` selects the template/output directories and overrides
+`.namespace`; without the flag, a config `namespace` other than `default` is an error
+(`resolveConfigNamespace`). A config file cannot yet choose the namespace by itself,
+because generation selects the template directory before loading config. Resolving
+it here replaces that error.
 
 **Starting points:** `internal/cli/generate.go` (`FindConfigFile`, config loading,
 and template-directory selection), `internal/cli/common.go` (`resolveTarget`),
@@ -100,14 +102,14 @@ Support `config.<namespace>.json`, `config.<namespace>.yaml`, and
 - [ ] Preserve format selection and existing generic JSON/YAML config support.
 - [ ] Require an explicit choice when multiple environment configs are ambiguous; never silently choose an arbitrary environment.
 - [ ] Resolve namespace in this order: explicitly supplied `--namespace`, filename suffix, config `namespace`, then `default`.
-- [ ] Use `cmd.Flags().Changed("namespace")` to distinguish an explicit flag from its default value.
+- [x] Use `cmd.Flags().Changed("namespace")` to distinguish an explicit flag from its default value.
 - [ ] Treat an explicit namespace flag as a deliberate override; otherwise, reject conflicting filename/config namespaces with a useful error.
-- [ ] Validate the resolved namespace and set the template's `.namespace` to that value.
+- [x] Validate the resolved namespace and set the template's `.namespace` to that value.
 - [ ] Resolve config and namespace before choosing template and output directories.
 - [ ] Extract shared resolution logic for `generate` and `apply`.
 - [ ] Add `--config` / `-c` to `apply` so it can select the corresponding generated namespace without regenerating manifests.
-- [ ] Reject rendered namespaced resources that conflict with the resolved target; keep cluster-scoped resources without a namespace.
-- [ ] Check namespace consistency again before apply so an edited config cannot silently redirect existing manifests.
+- [x] Reject rendered namespaced resources that conflict with the resolved target; keep cluster-scoped resources without a namespace.
+- [x] Check namespace consistency again before apply so an edited config cannot silently redirect existing manifests.
 
 ### Proposed workflow
 
@@ -204,9 +206,10 @@ production  myapp-7c845f9-x2abc   1/1     Running   0          12m
 **Starting points:** `internal/cli/apply.go`, `internal/cli/generate.go`,
 `internal/cli/root.go`, `.github/workflows/ci.yml`.
 
-- [ ] Decode YAML streams document by document in generation validation and apply; process every document separated by `---` and skip empty documents.
-- [ ] Reject invalid later documents during generation rather than validating only the first document.
-- [ ] Honor standard kubeconfig loading, including `KUBECONFIG`, and add `--kubeconfig` and `--context` to cluster commands.
+- [x] Decode YAML streams document by document in generation validation and apply; process every document separated by `---` and skip empty documents.
+- [x] Reject invalid later documents during generation rather than validating only the first document.
+- [x] Honor standard kubeconfig loading, including `KUBECONFIG`.
+- [ ] Add `--kubeconfig` and `--context` to cluster commands.
 - [ ] Replace `context.TODO()` with the Cobra command context and support bounded request timeouts.
 - [ ] Show the target context, namespace, and manifest version, then ask for apply confirmation as promised by the original roadmap.
 - [ ] Add `--yes` for noninteractive confirmation handling, including missing-namespace creation, and document its behavior.
@@ -219,7 +222,7 @@ production  myapp-7c845f9-x2abc   1/1     Running   0          12m
 
 **Acceptance criteria**
 
-- [ ] Every document in a multi-document manifest is validated and applied.
+- [x] Every document in a multi-document manifest is validated and applied.
 - [ ] Cluster commands honor selected kubeconfig/context and cancellation.
 - [ ] Apply confirmation works interactively and can be explicitly bypassed for automation.
 - [ ] Server dry-run leaves the cluster unchanged and reports missing namespaces clearly.
@@ -252,6 +255,6 @@ go vet ./...
 - Keep feature checkboxes unchecked until their acceptance criteria are met.
 - Update command help, `README.md`, and `internal/cli/docs.html` alongside user-facing changes.
 - Preserve existing generic configs and timestamped manifest history when introducing new conventions.
-- Start the next session with **milestone 1**. Suggested prompt:
+- Start the next session with **milestone 2**. Suggested prompt:
 
-  > Read roadmap.md and implement milestone 1: atomic generation and unique manifest versions. Inspect the existing generation and latest-version selection code, add regression tests for failed and colliding generations, run the relevant checks, and update the completed roadmap checkboxes.
+  > Read roadmap.md and implement the remaining items in milestone 2: namespace resolution and config-file naming conventions. Inspect the existing config selection and `resolveConfigNamespace`, add regression tests for the new resolution rules, run the relevant checks, and update the completed roadmap checkboxes.

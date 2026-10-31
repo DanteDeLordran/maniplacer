@@ -12,11 +12,15 @@ Maniplacer helps you manage Kubernetes manifests efficiently by:
 
 ## Project Status
 
-- **Latest tagged release**: `1.4.0`
 - **Runtime and tooling**: Go `1.25`, Cobra CLI, Kubernetes `client-go`
 - **Implemented commands**: `init`, `new`, `add`, `remove`, `generate`, `list`, `prune`, `docs`, `update`, `version`, `completion`, and `apply`
 - **In progress**: `deployed` is registered but currently a placeholder
-- **Planned**: Config-file naming convention for automatic namespace apply
+- **Planned**: See [roadmap.md](roadmap.md)
+
+### Known Limitations
+
+- **Target cluster**: `apply` uses the current kubeconfig context without confirming it and has no dry-run, so check `kubectl config current-context` first.
+- **Test coverage**: `apply` is tested against a fake API server, not a real cluster.
 
 ## Features
 
@@ -26,11 +30,11 @@ Maniplacer helps you manage Kubernetes manifests efficiently by:
 - **Cluster Apply**: Apply the latest generated manifests to a Kubernetes cluster
 - **Multi-format Support**: Works with JSON and YAML configuration files
 - **Built-in Documentation**: Local documentation server with examples
-- **Timestamped Outputs**: Each generation writes to a timestamped folder
+- **Timestamped Outputs**: Each successful generation publishes a complete timestamped folder
 - **Cleanup Tools**: Prune manifests and remove templates easily
 - **Self-updating**: Update to latest version from GitHub releases
 - **Input Validation**: Repository, namespace, component, and rendered YAML validation
-- **Test Coverage**: Unit tests for configuration, rendering, templates, updates, and documentation
+- **Test Coverage**: Unit tests for configuration, rendering, templates, apply, updates, and documentation
 - **Shell Completion**: Auto-completion for bash, zsh, fish, powershell
 - **Dry-Run Mode**: Validate generation without writing files
 
@@ -64,14 +68,14 @@ make install
 
 ### Build with Specific Version
 ```bash
-VERSION=1.4.0 make build
+VERSION=1.5.0 make build
 # or
-go build -ldflags "-X github.com/dantedelordran/maniplacer/internal/utils.Version=1.4.0" -o dist/maniplacer ./cmd
+go build -ldflags "-X github.com/dantedelordran/maniplacer/internal/utils.Version=1.5.0" -o dist/maniplacer ./cmd
 ```
 
 ### Docker
 ```bash
-docker build --build-arg VERSION=1.4.0 -t maniplacer:latest .
+docker build --build-arg VERSION=1.5.0 -t maniplacer:latest .
 docker run --rm -v $(pwd):/workspace maniplacer:latest version
 ```
 
@@ -148,7 +152,7 @@ maniplacer generate --dry-run -n production -r myapp
 ### 6. Apply Latest Generated Manifests
 
 ```bash
-# Apply latest generated manifests to the cluster configured by ~/.kube/config
+# Apply latest generated manifests to the current context of KUBECONFIG or ~/.kube/config
 maniplacer apply myapp -n production
 ```
 
@@ -176,7 +180,7 @@ my-k8s-project/
 │   │       └── configmap.yaml
 │   └── manifests/           # Generated outputs
 │       └── production/      # Namespace-specific manifests
-│           └── 2024-01-15_14-30-45/  # Timestamped generation
+│           └── 2024-01-15_14-30-45.123456789/  # Timestamped generation
 │               ├── deployment.yaml
 │               ├── service.yaml
 │               └── configmap.yaml
@@ -295,13 +299,22 @@ maniplacer generate --strict=false -r myrepo
 ```
 
 By default generation is **strict**: a template that references a key missing from
-the config file is an error, and rendered output must parse as valid YAML. This
-prevents the literal string `<no value>` from being written into a manifest and
-later applied to a cluster. Pass `--strict=false` for the previous lenient
-behaviour.
+the config file is an error, every rendered YAML document must be valid, and none
+may set a `metadata.namespace` other than the target. This prevents the literal
+string `<no value>` from being written into a manifest and later applied to a
+cluster. Pass `--strict=false` for the previous lenient behaviour.
+
+`-n` decides the namespace: it selects the template and manifest directories and
+sets `.namespace` for templates, overriding the config file. Without `-n`, a config
+`namespace` other than `default` is an error, because the manifests would be stored
+under `default` while targeting another namespace.
+
+Each run renders into a staging directory and is published to
+`manifests/<namespace>/<timestamp>/` only after every template succeeds, so a failed
+run leaves the previous version as the latest.
 
 ### `maniplacer apply`
-Apply the latest generated manifest version for a repository to the Kubernetes cluster configured by `~/.kube/config`.
+Apply the latest generated manifest version for a repository to the current context of `KUBECONFIG`, falling back to `~/.kube/config`.
 
 ```bash
 # Apply latest generated manifests in the default namespace
@@ -314,7 +327,7 @@ maniplacer apply myrepo -n production
 # -n, --namespace   Namespace to apply resources (default: "default")
 ```
 
-The command reads from `<repo>/manifests/<namespace>/<latest-timestamp>/`, prompts before creating a missing namespace, and uses server-side apply with field manager `maniplacer`.
+The command reads from `<repo>/manifests/<namespace>/<latest-timestamp>/`, applies every YAML document in each file, prompts before creating a missing namespace, and uses server-side apply with field manager `maniplacer`. A manifest whose `metadata.namespace` differs from `-n` is rejected, so regenerate any older version that hits this error. See [Known Limitations](#known-limitations).
 
 ### `maniplacer list`
 Display generated manifest versions in a specific namespace and repository.
@@ -575,7 +588,7 @@ cd maniplacer
 make build
 
 # Build with specific version
-VERSION=1.4.0 make build
+VERSION=1.5.0 make build
 
 # Build for all platforms
 make build-all
@@ -586,32 +599,29 @@ make release
 
 ### Publishing a Release
 
-Releases are built from version tags after `develop` has been merged into
-`main`. The release workflow runs tests, builds and verifies every supported
-binary, creates checksums and provenance attestations, and publishes the GitHub
-release.
+Releases are built from version tags after `dev` has been merged into `main`.
+The release workflow runs tests, builds every supported binary, creates checksums
+and provenance attestations, and publishes the GitHub release.
 
-#### 1. Push `develop`
+#### 1. Push `dev`
 
 ```bash
-git switch develop
-git push origin develop
+git switch dev
+git push origin dev
 ```
-
-This starts the CI workflow for `develop`.
 
 #### 2. Open and merge a pull request
 
 ```bash
 gh pr create \
   --base main \
-  --head develop \
-  --title "Release preparation for 1.5.0" \
-  --body "Prepare Maniplacer 1.5.0 for release."
+  --head dev \
+  --title "Release preparation for 1.6.0" \
+  --body "Prepare Maniplacer 1.6.0 for release."
 ```
 
 Wait for all CI checks to pass, review the pull request, and merge it without
-deleting the long-lived `develop` branch:
+deleting the long-lived `dev` branch:
 
 ```bash
 gh pr merge --merge
@@ -635,8 +645,8 @@ Use semantic versioning and follow the repository's existing tag style without
 a `v` prefix:
 
 ```bash
-git tag -a 1.5.0 -m "Maniplacer 1.5.0"
-git push origin 1.5.0
+git tag -a 1.6.0 -m "Maniplacer 1.6.0"
+git push origin 1.6.0
 ```
 
 Pushing the tag starts `.github/workflows/release.yml`. The tagged commit is
@@ -647,7 +657,7 @@ what gets built, so always create the tag from the updated `main` branch.
 ```bash
 gh run list --workflow=release.yml
 gh run watch
-gh release view 1.5.0
+gh release view 1.6.0
 ```
 
 Do not run `gh release create` manually; the release workflow creates the

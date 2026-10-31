@@ -48,7 +48,7 @@
       <ol class="steps">
         <li><strong>Configure.</strong> Put environment-specific values in <code>config.json</code>, <code>config.yaml</code>, or <code>config.yml</code>.</li>
         <li><strong>Template.</strong> Reference those values from Kubernetes YAML under <code>templates/&lt;namespace&gt;/</code>.</li>
-        <li><strong>Generate.</strong> Run <code>maniplacer generate</code>; validated output is written below <code>manifests/&lt;namespace&gt;/</code>.</li>
+        <li><strong>Generate.</strong> Run <code>maniplacer generate</code>; validated output is published below <code>manifests/&lt;namespace&gt;/</code> once every template succeeds. <code>--namespace</code> also sets <code>.namespace</code>, overriding the config; without the flag, a config namespace other than <code>default</code> is an error.</li>
       </ol>
     </section>
     <section id="example" aria-labelledby="example-title">
