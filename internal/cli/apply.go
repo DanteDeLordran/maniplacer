@@ -1,10 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/dantedelordran/maniplacer/internal/utils"
 	"github.com/spf13/cobra"
@@ -28,8 +32,12 @@ var (
 var applyCmd = &cobra.Command{
 	Use:   "apply [repository]",
 	Short: "Apply generated Kubernetes manifests for a repository",
-	Long:  `Apply the latest generated Kubernetes manifests for a repository.`,
-	Args:  cobra.ExactArgs(1),
+	Long: `Apply the latest generated Kubernetes manifests for a repository.
+
+The target cluster is the current context of the KUBECONFIG environment variable, falling back to ~/.kube/config.
+
+Every YAML document in each manifest is applied. A manifest whose metadata.namespace differs from --namespace is rejected rather than applied to that other namespace.`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if !utils.IsValidProject() {
 			return fmt.Errorf("current directory is not a valid Maniplacer project")
@@ -72,13 +80,11 @@ func init() {
 }
 
 func initKubeClients() error {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("could not get home dir: %w", err)
-	}
-
-	kubeconfig := filepath.Join(homeDir, ".kube", "config")
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	// Matches kubectl: KUBECONFIG when set, otherwise ~/.kube/config
+	config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		clientcmd.NewDefaultClientConfigLoadingRules(),
+		&clientcmd.ConfigOverrides{},
+	).ClientConfig()
 	if err != nil {
 		return fmt.Errorf("could not build kubeconfig: %w", err)
 	}
@@ -107,7 +113,7 @@ func getLatestManifest(projectPath string) (string, error) {
 
 	latest := ""
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if _, err := time.Parse(versionLayout, entry.Name()); entry.IsDir() && err == nil {
 			latest = entry.Name()
 		}
 	}
@@ -119,7 +125,37 @@ func getLatestManifest(projectPath string) (string, error) {
 	return filepath.Join(projectPath, latest), nil
 }
 
-func createResources(projectPath string, defaultNamespace string) error {
+// decodeManifests parses every document in a YAML stream, skipping empty ones.
+func decodeManifests(data []byte) ([]*unstructured.Unstructured, error) {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+
+	var objects []*unstructured.Unstructured
+	for {
+		obj := &unstructured.Unstructured{}
+		err := decoder.Decode(&obj.Object)
+		if errors.Is(err, io.EOF) {
+			return objects, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if len(obj.Object) > 0 {
+			objects = append(objects, obj)
+		}
+	}
+}
+
+// checkManifestNamespace rejects a manifest that sets a namespace other than the
+// target. One without a namespace is fine: it is either cluster-scoped or placed
+// in the target by apply.
+func checkManifestNamespace(obj *unstructured.Unstructured, target string) error {
+	if namespace := obj.GetNamespace(); namespace != "" && namespace != target {
+		return fmt.Errorf("%s '%s' sets namespace '%s', which does not match target namespace '%s'", obj.GetKind(), obj.GetName(), namespace, target)
+	}
+	return nil
+}
+
+func createResources(projectPath string, targetNamespace string) error {
 	mapper := restmapper.NewDeferredDiscoveryRESTMapper(memory.NewMemCacheClient(k8sClient.Discovery()))
 	ctx := context.TODO()
 
@@ -146,58 +182,23 @@ func createResources(projectPath string, defaultNamespace string) error {
 			continue
 		}
 
-		obj := &unstructured.Unstructured{}
-		err = yaml.Unmarshal(data, &obj.Object)
+		objects, err := decodeManifests(data)
 		if err != nil {
-			fmt.Printf("Could not parse YAML: %s\n", err)
+			fmt.Printf("Could not parse YAML in %s: %s\n", entry.Name(), err)
 			errorCount++
 			continue
 		}
 
-		// Skip empty documents
-		if obj.GetKind() == "" {
-			continue
-		}
-
-		gvk := obj.GroupVersionKind()
-
-		restMapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
-		if err != nil {
-			fmt.Printf("Could not create rest mapper: %s\n", err)
-			errorCount++
-			continue
-		}
-
-		gvr := restMapping.Resource
-
-		namespace := obj.GetNamespace()
-		if namespace == "" {
-			// Check if this resource is namespaced
-			if restMapping.Scope.Name() == "namespace" {
-				namespace = defaultNamespace
-				obj.SetNamespace(namespace)
-			}
-		}
-
-		if namespace != "" {
-			if err := ensureNamespace(ctx, namespace); err != nil {
-				fmt.Printf("Skipping %s: %s\n", entry.Name(), err)
+		for _, obj := range objects {
+			if err := applyObject(ctx, mapper, obj, targetNamespace); err != nil {
+				fmt.Printf("Could not apply %s: %s\n", entry.Name(), err)
 				errorCount++
 				continue
 			}
+
+			fmt.Printf("%s - Applied %s '%s'!\n", entry.Name(), obj.GetKind(), obj.GetName())
+			appliedCount++
 		}
-
-		applyOpts := v1.ApplyOptions{FieldManager: "maniplacer"}
-
-		_, err = dynamicClient.Resource(gvr).Namespace(namespace).Apply(ctx, obj.GetName(), obj, applyOpts)
-		if err != nil {
-			fmt.Printf("Could not apply %s: %s\n", entry.Name(), err)
-			errorCount++
-			continue
-		}
-
-		fmt.Printf("%s - Applied!\n", entry.Name())
-		appliedCount++
 	}
 
 	fmt.Printf("\nApply complete: %d applied, %d errors\n", appliedCount, errorCount)
@@ -207,6 +208,42 @@ func createResources(projectPath string, defaultNamespace string) error {
 	}
 
 	return nil
+}
+
+// applyObject server-side applies a single resource to the target namespace.
+func applyObject(ctx context.Context, mapper *restmapper.DeferredDiscoveryRESTMapper, obj *unstructured.Unstructured, targetNamespace string) error {
+	if err := checkManifestNamespace(obj, targetNamespace); err != nil {
+		return err
+	}
+
+	gvk := obj.GroupVersionKind()
+
+	restMapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+	if err != nil {
+		return fmt.Errorf("could not create rest mapper: %w", err)
+	}
+
+	gvr := restMapping.Resource
+
+	namespace := obj.GetNamespace()
+	if namespace == "" {
+		// Check if this resource is namespaced
+		if restMapping.Scope.Name() == "namespace" {
+			namespace = targetNamespace
+			obj.SetNamespace(namespace)
+		}
+	}
+
+	if namespace != "" {
+		if err := ensureNamespace(ctx, namespace); err != nil {
+			return err
+		}
+	}
+
+	applyOpts := v1.ApplyOptions{FieldManager: "maniplacer"}
+
+	_, err = dynamicClient.Resource(gvr).Namespace(namespace).Apply(ctx, obj.GetName(), obj, applyOpts)
+	return err
 }
 
 // ensureNamespace checks that the target namespace exists, offering to create it
